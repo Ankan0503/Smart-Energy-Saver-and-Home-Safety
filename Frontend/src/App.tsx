@@ -256,22 +256,43 @@ export default function App() {
   useAudioAlert(!!showOverlay && !isMuted);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setGasLevel(prev => {
-        const next = Math.max(100, Math.min(450, prev + (Math.random() * 30 - 10)));
-        if (next > 350 && !showOverlay) setShowOverlay('gas');
-        else if (next <= 350 && showOverlay === 'gas') setShowOverlay(null);
-        return next;
-      });
+    const fetchTelemetry = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const res = await fetch(`${apiUrl}/api/telemetry/latest/`);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        // Scale 12-bit ADC value (0-4095) down to UI scale (e.g., 3500 raw -> 350)
+        const uiGasLevel = data.gas / 10;
+        setGasLevel(uiGasLevel);
+        
+        // flame == 0 means fire detected (Active-LOW)
+        const fireDetected = data.flame === 0;
+        setIsFlame(fireDetected);
 
-      if (Math.random() > 0.95) {
-        setIsFlame(true);
-        setShowOverlay('fire');
-      } else if (Math.random() < 0.2) {
-        setIsFlame(false);
-        if (showOverlay === 'fire') setShowOverlay(null);
+        // Manage safety overlays
+        if (fireDetected && showOverlay !== 'fire') {
+          setShowOverlay('fire');
+        } else if (data.gas > 3500 && showOverlay !== 'gas' && !fireDetected) {
+          setShowOverlay('gas');
+        } else if (!fireDetected && data.gas <= 3500) {
+          if (showOverlay === 'fire' || showOverlay === 'gas') {
+            setShowOverlay(null);
+          }
+        }
+
+        // Handle physical overcurrent relay trip in UI
+        if (data.status === 'OVERCURRENT_TRIP') {
+          setZones(prev => prev.map(z => z.id === 'kitchen-app' ? { ...z, active: false, status: 'Idle' } : z));
+        }
+      } catch (err) {
+        console.error("Error fetching live telemetry:", err);
       }
-    }, 3000);
+    };
+
+    fetchTelemetry();
+    const interval = setInterval(fetchTelemetry, 1500);
     return () => clearInterval(interval);
   }, [showOverlay]);
 
