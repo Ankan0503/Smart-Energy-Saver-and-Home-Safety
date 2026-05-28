@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { TrendingUp, Cpu, Zap, Plus } from 'lucide-react';
+import { TrendingUp, Cpu, Zap, Plus, Activity } from 'lucide-react';
 import { 
   AreaChart, 
   Area, 
