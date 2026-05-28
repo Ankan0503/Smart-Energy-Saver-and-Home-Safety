@@ -1,44 +1,739 @@
-import React from 'react';
-import { motion } from 'motion/react';
-import { Settings } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Settings, 
+  Cpu, 
+  Wifi, 
+  Trash2, 
+  Plus, 
+  Key, 
+  User as UserIcon, 
+  LogOut, 
+  PlusCircle, 
+  RefreshCw,
+  Layers,
+  Radio
+} from 'lucide-react';
 
-export const SettingsView = () => (
-  <motion.div 
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    className="max-w-2xl bg-white rounded-[4rem] p-12 border border-olive/10 shadow-sm mx-auto pb-20"
-  >
-    <div className="flex items-center gap-6 mb-10">
-      <div className="p-6 bg-olive text-white rounded-3xl soft-shadow">
-        <Settings size={32} />
-      </div>
-      <h3 className="text-2xl font-display font-medium text-olive italic">System Preference Matrix</h3>
-    </div>
+interface SettingsViewProps {
+  isAuthenticated: boolean;
+  setIsAuthenticated: (v: boolean) => void;
+  username: string;
+  setUsername: (v: string) => void;
+  meshId: string;
+  setMeshId: (v: string) => void;
+  meshKey: string;
+  setMeshKey: (v: string) => void;
+  token: string;
+  setToken: (v: string) => void;
+}
+
+export const SettingsView = ({
+  isAuthenticated,
+  setIsAuthenticated,
+  username,
+  setUsername,
+  meshId,
+  setMeshId,
+  meshKey,
+  setMeshKey,
+  token,
+  setToken
+}: SettingsViewProps) => {
+  
+  const [devices, setDevices] = useState<any[]>([]);
+  const [unlinkedDevices, setUnlinkedDevices] = useState<any[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
+  const [inputUsername, setInputUsername] = useState('');
+  const [inputPassword, setInputPassword] = useState('');
+  const [inputEmail, setInputEmail] = useState('');
+  
+  const [authError, setAuthError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Pairing inputs state (keyed by MAC address)
+  const [pairingUniques, setPairingUniques] = useState<{[key: string]: string}>({});
+  const [pairingDisplays, setPairingDisplays] = useState<{[key: string]: string}>({});
+  const [pairingRoles, setPairingRoles] = useState<{[key: string]: string}>({});
+
+  // Deletion confirmation modal states
+  const [deviceToDelete, setDeviceToDelete] = useState<any | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [gatewayCheckboxChecked, setGatewayCheckboxChecked] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  const checkAuth = async () => {
+    const saved = localStorage.getItem('aether_user');
+    let currentToken = token;
+    if (saved) {
+      try {
+        const user = JSON.parse(saved);
+        setIsAuthenticated(true);
+        setUsername(user.username);
+        setMeshId(user.mesh_id);
+        setMeshKey(user.mesh_key);
+        currentToken = user.token || token;
+        if (currentToken && currentToken !== token) {
+          setToken(currentToken);
+        }
+        fetchDevices(currentToken);
+        fetchUnlinkedDevices(currentToken);
+        return; // Skip server check if cached
+      } catch (e) {
+        console.error("Failed to parse cached auth:", e);
+      }
+    }
+
+    try {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (currentToken) {
+        headers['Authorization'] = `Bearer ${currentToken}`;
+      }
+      const res = await fetch(`${API_URL}/api/accounts/me/`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated) {
+          setIsAuthenticated(true);
+          setUsername(data.username);
+          setMeshId(data.mesh_id);
+          setMeshKey(data.mesh_key);
+          localStorage.setItem('aether_user', JSON.stringify({
+            token: currentToken,
+            username: data.username,
+            mesh_id: data.mesh_id,
+            mesh_key: data.mesh_key
+          }));
+          fetchDevices(currentToken);
+          fetchUnlinkedDevices(currentToken);
+        }
+      } else {
+        setIsAuthenticated(false);
+      }
+    } catch (e) {
+      console.error("Auth check failed:", e);
+    }
+  };
+
+  const fetchDevices = async (tokenOverride?: string) => {
+    try {
+      const activeToken = tokenOverride || token;
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (activeToken) {
+        headers['Authorization'] = `Bearer ${activeToken}`;
+      }
+      const res = await fetch(`${API_URL}/api/devices/?mesh_id=${meshId}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setDevices(data.devices || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch devices:", e);
+    }
+  };
+
+  const fetchUnlinkedDevices = async (tokenOverride?: string) => {
+    try {
+      const activeToken = tokenOverride || token;
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (activeToken) {
+        headers['Authorization'] = `Bearer ${activeToken}`;
+      }
+      const res = await fetch(`${API_URL}/api/devices/unlinked/?mesh_id=${meshId}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setUnlinkedDevices(data.devices || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch unlinked devices:", e);
+    }
+  };
+
+  useEffect(() => {
+    checkAuth();
+    // Poll unlinked devices every 4 seconds
+    const interval = setInterval(() => {
+      if (isAuthenticated) {
+        fetchUnlinkedDevices();
+        fetchDevices();
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, token]);
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setIsLoading(true);
     
-    <div className="space-y-8">
-      <div className="flex items-center justify-between p-6 bg-bg-card/20 rounded-3xl">
-        <div>
-          <h5 className="font-bold text-ink mb-1">Dark Mode Override</h5>
-          <p className="text-[10px] text-ink/40 font-black uppercase tracking-widest">Automatic based on solar cycle</p>
-        </div>
-        <div className="w-12 h-6 bg-sage rounded-full flex items-center px-1">
-          <div className="w-4 h-4 bg-white rounded-full translate-x-6 shadow-sm" />
-        </div>
-      </div>
-      <div className="flex items-center justify-between p-6 bg-bg-card/20 rounded-3xl opacity-50">
-          <div>
-          <h5 className="font-bold text-ink mb-1">Predictive Loading</h5>
-          <p className="text-[10px] text-ink/40 font-black uppercase tracking-widest">Beta testing active</p>
-        </div>
-        <div className="w-12 h-6 bg-ink/10 rounded-full flex items-center px-1">
-          <div className="w-4 h-4 bg-ink/20 rounded-full" />
-        </div>
-      </div>
-    </div>
+    const endpoint = authTab === 'login' ? 'login/' : 'signup/';
+    const body = authTab === 'login' 
+      ? { username: inputUsername, password: inputPassword }
+      : { username: inputUsername, password: inputPassword, email: inputEmail };
 
-    <div className="mt-12 p-8 bg-olive/5 rounded-[2.5rem] border border-olive/5 text-center">
-       <div className="text-[9px] font-black text-olive/40 uppercase tracking-widest mb-2">Mesh Identity</div>
-       <div className="text-[10px] font-bold text-ink/40 italic">AETHER-OS-v2.4.1-MESH-TOPOLOGY</div>
-    </div>
-  </motion.div>
-);
+    try {
+      const res = await fetch(`${API_URL}/api/accounts/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setIsAuthenticated(true);
+        setUsername(data.username);
+        setMeshId(data.mesh_id);
+        setMeshKey(data.mesh_key);
+        setToken(data.token);
+        localStorage.setItem('aether_user', JSON.stringify({
+          token: data.token,
+          username: data.username,
+          mesh_id: data.mesh_id,
+          mesh_key: data.mesh_key
+        }));
+        setInputPassword('');
+        fetchDevices(data.token);
+        fetchUnlinkedDevices(data.token);
+      } else {
+        setAuthError(data.error || 'Authentication failed.');
+      }
+    } catch (e) {
+      setAuthError('Network error. Is backend running?');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      await fetch(`${API_URL}/api/accounts/logout/`, { method: 'POST', headers });
+      setIsAuthenticated(false);
+      setUsername('');
+      setMeshId('');
+      setMeshKey('');
+      setToken('');
+      setDevices([]);
+      setUnlinkedDevices([]);
+      localStorage.removeItem('aether_user');
+    } catch (e) {
+      console.error("Logout failed:", e);
+    }
+  };
+
+  const handlePair = async (mac: string) => {
+    const uniqueSuffix = pairingUniques[mac] || 'node';
+    const friendlyName = pairingDisplays[mac] || 'Sensor';
+    const name = `aether-${uniqueSuffix}-${friendlyName}`;
+    const role = pairingRoles[mac] || 'sensor';
+
+    try {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(`${API_URL}/api/devices/register/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ mac_address: mac, name, role, mesh_id: meshId })
+      });
+      if (res.ok) {
+        // Clear pairing input fields
+        setPairingUniques(prev => {
+          const next = { ...prev };
+          delete next[mac];
+          return next;
+        });
+        setPairingDisplays(prev => {
+          const next = { ...prev };
+          delete next[mac];
+          return next;
+        });
+        fetchDevices();
+        fetchUnlinkedDevices();
+      }
+    } catch (e) {
+      console.error("Pairing failed:", e);
+    }
+  };
+
+  const handleUnpair = async () => {
+    if (!deviceToDelete) return;
+    setIsDeleting(true);
+    try {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(`${API_URL}/api/devices/unregister/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ mac_address: deviceToDelete.mac_address, mesh_id: meshId })
+      });
+      if (res.ok) {
+        fetchDevices();
+        fetchUnlinkedDevices();
+        setDeviceToDelete(null);
+        setDeleteConfirmText('');
+        setGatewayCheckboxChecked(false);
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Unpairing failed.");
+      }
+    } catch (e) {
+      console.error("Unpairing failed:", e);
+      alert("Network error occurred during unpairing.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await Promise.all([fetchDevices(), fetchUnlinkedDevices()]);
+    setTimeout(() => setIsRefreshing(false), 600);
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <motion.div 
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-md bg-white rounded-[3.5rem] p-10 border border-olive/15 shadow-2xl mx-auto mt-10 relative overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-olive via-sage to-clay" />
+        <div className="flex flex-col items-center mb-8">
+          <div className="p-4 bg-olive/10 text-olive rounded-3xl mb-4">
+            <Radio size={28} className="animate-pulse" />
+          </div>
+          <h3 className="text-xl font-display font-medium text-olive italic">Aether Mesh Sentinel</h3>
+          <p className="text-[10px] text-ink/40 font-black uppercase tracking-widest mt-1">Authentication Core Gate</p>
+        </div>
+
+        <div className="flex border-b border-olive/10 mb-6">
+          <button 
+            onClick={() => { setAuthTab('login'); setAuthError(''); }}
+            className={`flex-1 pb-3 text-[10px] font-black uppercase tracking-widest transition-all ${authTab === 'login' ? 'border-b-2 border-olive text-olive' : 'text-ink/30'}`}
+          >
+            Sign In
+          </button>
+          <button 
+            onClick={() => { setAuthTab('signup'); setAuthError(''); }}
+            className={`flex-1 pb-3 text-[10px] font-black uppercase tracking-widest transition-all ${authTab === 'signup' ? 'border-b-2 border-olive text-olive' : 'text-ink/30'}`}
+          >
+            Create Mesh
+          </button>
+        </div>
+
+        <form onSubmit={handleAuth} className="space-y-4">
+          <div>
+            <label className="text-[9px] font-black text-olive/50 uppercase tracking-widest block mb-1">Username</label>
+            <input 
+              type="text" 
+              value={inputUsername}
+              onChange={e => setInputUsername(e.target.value)}
+              className="w-full px-4 py-3 bg-bg-card/25 border border-olive/10 rounded-2xl text-xs font-bold text-ink focus:outline-none focus:border-olive transition-colors"
+              required 
+            />
+          </div>
+
+          {authTab === 'signup' && (
+            <div>
+              <label className="text-[9px] font-black text-olive/50 uppercase tracking-widest block mb-1">Email (Optional)</label>
+              <input 
+                type="email" 
+                value={inputEmail}
+                onChange={e => setInputEmail(e.target.value)}
+                className="w-full px-4 py-3 bg-bg-card/25 border border-olive/10 rounded-2xl text-xs font-bold text-ink focus:outline-none focus:border-olive transition-colors"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="text-[9px] font-black text-olive/50 uppercase tracking-widest block mb-1">Password</label>
+            <input 
+              type="password" 
+              value={inputPassword}
+              onChange={e => setInputPassword(e.target.value)}
+              className="w-full px-4 py-3 bg-bg-card/25 border border-olive/10 rounded-2xl text-xs font-bold text-ink focus:outline-none focus:border-olive transition-colors"
+              required 
+            />
+          </div>
+
+          {authError && (
+            <div className="p-3 bg-danger/10 border border-danger/10 rounded-2xl text-[10px] text-danger font-bold italic text-center">
+              {authError}
+            </div>
+          )}
+
+          <button 
+            type="submit" 
+            disabled={isLoading}
+            className="w-full py-4 bg-olive text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-olive/10 hover:bg-olive/90 transition-all flex items-center justify-center gap-2"
+          >
+            {isLoading ? <RefreshCw size={14} className="animate-spin" /> : null}
+            {authTab === 'login' ? 'ESTABLISH MESH CHANNEL' : 'PROVISION NEW MESH NETWORK'}
+          </button>
+        </form>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="max-w-4xl bg-white rounded-[4rem] p-10 border border-olive/10 shadow-sm mx-auto pb-20 space-y-12"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-olive/5 pb-8">
+        <div className="flex items-center gap-6">
+          <div className="p-5 bg-olive text-white rounded-3xl soft-shadow">
+            <Settings size={28} />
+          </div>
+          <div>
+            <h3 className="text-2xl font-display font-medium text-olive italic leading-none">System Preference Matrix</h3>
+            <p className="text-[10px] text-ink/30 font-black uppercase mt-1.5 tracking-widest">Mesh Configuration Dashboard</p>
+          </div>
+        </div>
+        
+        <button 
+          onClick={handleLogout}
+          className="px-5 py-3 border border-danger/10 text-danger hover:bg-danger/5 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+        >
+          <LogOut size={12} />
+          Terminate Session
+        </button>
+      </div>
+
+      {/* Mesh Configuration Details */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="p-6 bg-olive/5 rounded-3xl border border-olive/5 flex items-start gap-4">
+          <div className="p-3 bg-olive/10 text-olive rounded-2xl">
+            <Layers size={20} />
+          </div>
+          <div>
+            <h4 className="text-[9px] font-black text-olive/40 uppercase tracking-widest mb-1">Mesh Identifier</h4>
+            <div className="text-sm font-bold text-ink italic font-mono selection:bg-olive/20">{meshId}</div>
+            <p className="text-[8px] text-ink/40 font-bold uppercase tracking-wider mt-1">Required for ESP32 configuration</p>
+          </div>
+        </div>
+
+        <div className="p-6 bg-olive/5 rounded-3xl border border-olive/5 flex items-start gap-4">
+          <div className="p-3 bg-olive/10 text-olive rounded-2xl">
+            <Key size={20} />
+          </div>
+          <div>
+            <h4 className="text-[9px] font-black text-olive/40 uppercase tracking-widest mb-1">Mesh Secret Key</h4>
+            <div className="text-sm font-bold text-ink italic font-mono selection:bg-olive/20 select-all">{meshKey}</div>
+            <p className="text-[8px] text-ink/40 font-bold uppercase tracking-wider mt-1">Do not share. Secures peer-to-peer ESP-NOW</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Active Device Discovery Alert Card */}
+      {unlinkedDevices.length > 0 && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="p-8 rounded-[2.5rem] bg-gradient-to-br from-sage/10 to-olive/5 border border-sage/30 shadow-sm relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 w-24 h-24 bg-sage/20 rounded-full blur-2xl translate-x-6 -translate-y-6" />
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-2.5 h-2.5 rounded-full bg-sage animate-ping" />
+            <div>
+              <h4 className="text-xs font-black text-olive uppercase tracking-widest">Unassigned Devices Detected</h4>
+              <p className="text-[9px] text-ink/40 font-bold italic mt-0.5">Found new ESP32 units broadcasting discovery signatures locally</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {unlinkedDevices.map((dev) => (
+              <div 
+                key={dev.mac_address}
+                className="p-5 bg-white rounded-3xl border border-olive/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all hover:shadow-md"
+              >
+                <div>
+                  <div className="text-xs font-mono font-bold text-ink">{dev.mac_address}</div>
+                  <div className="text-[8px] text-ink/30 font-black uppercase tracking-wider mt-0.5">Discovered via Central Gateway</div>
+                </div>
+
+                <div className="flex flex-1 max-w-lg items-center gap-3 w-full">
+                  <div className="flex items-center bg-bg-card/25 border border-olive/10 rounded-xl px-3 py-1 flex-1 min-w-[120px]">
+                    <span className="text-[10px] font-bold text-olive/40 select-none">aether-</span>
+                    <input 
+                      type="text"
+                      placeholder="room1"
+                      maxLength={20}
+                      value={pairingUniques[dev.mac_address] || ''}
+                      onChange={e => setPairingUniques({ ...pairingUniques, [dev.mac_address]: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })}
+                      className="w-full bg-transparent border-none text-[10px] font-bold text-ink focus:outline-none py-1.5"
+                    />
+                  </div>
+                  <input 
+                    type="text"
+                    placeholder="E.g., Kitchen Gas Sensor"
+                    maxLength={30}
+                    value={pairingDisplays[dev.mac_address] || ''}
+                    onChange={e => setPairingDisplays({ ...pairingDisplays, [dev.mac_address]: e.target.value })}
+                    className="flex-1 px-4 py-2.5 bg-bg-card/25 border border-olive/10 rounded-xl text-[10px] font-bold text-ink focus:outline-none focus:border-olive min-w-[150px]"
+                  />
+                  <select
+                    value={pairingRoles[dev.mac_address] || 'sensor'}
+                    onChange={e => setPairingRoles({ ...pairingRoles, [dev.mac_address]: e.target.value })}
+                    className="px-3 py-2.5 bg-bg-card/25 border border-olive/10 rounded-xl text-[10px] font-bold text-ink focus:outline-none"
+                  >
+                    <option value="sensor">Sensor Node</option>
+                    <option value="relay">Relay Node</option>
+                  </select>
+                </div>
+
+                <button 
+                  onClick={() => handlePair(dev.mac_address)}
+                  className="px-5 py-3 bg-olive text-white rounded-xl text-[9px] font-black uppercase tracking-widest shadow-sm hover:bg-olive/90 transition-all flex items-center gap-2 w-full md:w-auto justify-center"
+                >
+                  <Plus size={12} />
+                  Authorize Device
+                </button>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Paired Device List Table */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-xs font-black text-ink uppercase tracking-widest">Active Mesh Nodes</h4>
+            <p className="text-[9px] text-ink/30 font-bold italic mt-0.5">List of devices cryptographically bound to your mesh network</p>
+          </div>
+          <button 
+            onClick={handleManualRefresh}
+            className="p-2.5 bg-bg-card/30 hover:bg-bg-card rounded-xl text-ink/40 hover:text-ink transition-colors"
+            title="Refresh List"
+          >
+            <RefreshCw size={14} className={isRefreshing ? "animate-spin text-olive" : ""} />
+          </button>
+        </div>
+
+        {devices.length === 0 ? (
+          <div className="p-8 text-center bg-bg-card/10 rounded-3xl border border-dashed border-olive/10">
+            <Wifi size={24} className="text-ink/10 mx-auto mb-2" />
+            <p className="text-[10px] text-ink/40 font-bold italic">No devices paired to this mesh yet.</p>
+          </div>
+        ) : (
+          <div className="bg-bg-card/10 border border-olive/5 rounded-3xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-olive/5 text-[9px] font-black text-olive/50 uppercase tracking-widest bg-olive/5">
+                    <th className="p-4 pl-6">Device Name</th>
+                    <th className="p-4">MAC Address</th>
+                    <th className="p-4">Role</th>
+                    <th className="p-4 text-center">Status</th>
+                    <th className="p-4 text-right pr-6">Management</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-olive/5 text-[10px] font-bold text-ink">
+                  {devices.map((dev) => (
+                    <tr key={dev.mac_address} className="hover:bg-white/50 transition-colors">
+                      <td className="p-4 pl-6 italic">{dev.name}</td>
+                      <td className="p-4 font-mono font-medium">{dev.mac_address}</td>
+                      <td className="p-4">
+                        <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-wider border ${
+                          dev.role === 'gateway' ? 'bg-olive/10 text-olive border-olive/10' :
+                          dev.role === 'relay' ? 'bg-clay/10 text-clay border-clay/10' :
+                          'bg-sage/10 text-sage border-sage/10'
+                        }`}>
+                          {dev.role}
+                        </span>
+                      </td>
+                      <td className="p-4 text-center">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-wider border transition-all ${
+                          dev.is_active 
+                            ? 'bg-sage/10 text-sage border-sage/20 shadow-sm shadow-sage/5 animate-pulse' 
+                            : 'bg-danger/5 text-danger/60 border-danger/10'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${dev.is_active ? 'bg-sage' : 'bg-danger/40'}`} />
+                          {dev.is_active ? 'Active' : 'Offline'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right pr-6">
+                        <button 
+                          onClick={() => {
+                            setDeviceToDelete(dev);
+                            setDeleteConfirmText('');
+                            setGatewayCheckboxChecked(false);
+                          }}
+                          className={`p-2 rounded-lg transition-all ${
+                            dev.role === 'gateway' 
+                              ? 'text-danger hover:bg-danger/10 border border-danger/25 shadow-sm' 
+                              : 'text-ink/20 hover:text-danger hover:bg-danger/5'
+                          }`}
+                          title={dev.role === 'gateway' ? "Deregister Mesh & Gateway" : "Remove from Mesh"}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Custom Deletion Confirmation Modal */}
+      <AnimatePresence>
+        {deviceToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (!isDeleting) {
+                  setDeviceToDelete(null);
+                }
+              }}
+              className="absolute inset-0 bg-ink/40 backdrop-blur-md"
+            />
+
+            {/* Modal Card */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: 'spring', duration: 0.4 }}
+              className="relative w-full max-w-md bg-white rounded-[3.5rem] p-10 border border-olive/15 shadow-2xl overflow-hidden z-10"
+            >
+              {/* Top Warning Strip */}
+              <div className={`absolute top-0 left-0 w-full h-2 ${
+                deviceToDelete.role === 'gateway' ? 'bg-danger' : 'bg-clay'
+              }`} />
+
+              <div className="flex flex-col items-center text-center">
+                {/* Warning Icon */}
+                <div className={`p-4 rounded-3xl mb-5 ${
+                  deviceToDelete.role === 'gateway' ? 'bg-danger/10 text-danger' : 'bg-clay/10 text-clay'
+                }`}>
+                  <Trash2 size={28} className={deviceToDelete.role === 'gateway' ? 'animate-bounce' : ''} />
+                </div>
+
+                <h3 className={`text-xl font-display font-medium italic mb-2 ${
+                  deviceToDelete.role === 'gateway' ? 'text-danger' : 'text-olive'
+                }`}>
+                  {deviceToDelete.role === 'gateway' ? 'DISSOLVE SECURE MESH' : 'REMOVE NODE FROM MESH'}
+                </h3>
+                
+                <p className="text-[10px] text-ink/40 font-black uppercase tracking-widest mb-6">
+                  {deviceToDelete.role === 'gateway' ? 'Critical Network Destruction' : 'Node De-authorization Gate'}
+                </p>
+
+                {/* Device Info */}
+                <div className="w-full bg-olive/5 rounded-2xl p-4 border border-olive/5 mb-6 text-left space-y-2">
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="font-black text-olive/50 uppercase tracking-wider">Device Name:</span>
+                    <span className="font-mono font-bold text-ink italic">{deviceToDelete.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="font-black text-olive/50 uppercase tracking-wider">MAC Address:</span>
+                    <span className="font-mono font-bold text-ink">{deviceToDelete.mac_address}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[10px]">
+                    <span className="font-black text-olive/50 uppercase tracking-wider">Role:</span>
+                    <span className="font-mono font-bold text-ink uppercase">{deviceToDelete.role}</span>
+                  </div>
+                </div>
+
+                {/* WARNING MESSAGE */}
+                {deviceToDelete.role === 'gateway' ? (
+                  <div className="w-full bg-danger/10 border border-danger/20 rounded-2xl p-5 mb-6 text-left text-danger">
+                    <p className="text-xs font-black uppercase tracking-wider mb-1.5">🚨 CRITICAL DANGER ZONE</p>
+                    <p className="text-[10px] font-bold leading-relaxed">
+                      De-authorizing the Central Gateway will dissolve the entire secure mesh network. 
+                      This will delete <strong>ALL ({devices.length})</strong> connected nodes and their histories from the database. 
+                      The Central Gateway and all sub-nodes will be reset to factory settings.
+                    </p>
+                    
+                    {/* Mandatory Checkbox */}
+                    <label className="flex items-start gap-2.5 mt-4 select-none cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={gatewayCheckboxChecked}
+                        onChange={(e) => setGatewayCheckboxChecked(e.target.checked)}
+                        className="mt-0.5 rounded border-danger/30 text-danger focus:ring-danger"
+                      />
+                      <span className="text-[9px] font-black uppercase tracking-wide text-danger leading-tight">
+                        I understand that this action is irreversible and will delete all other devices in my mesh
+                      </span>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="w-full bg-clay/5 border border-clay/10 rounded-2xl p-4 mb-6 text-left text-ink/70">
+                    <p className="text-[10px] font-medium leading-relaxed">
+                      Removing this sensor node will permanently delete it and all its associated telemetry logs from the database. 
+                      An unpair command will be sent, and the hardware will return to Discovery Mode.
+                    </p>
+                  </div>
+                )}
+
+                {/* Typing Reverification Field */}
+                <div className="w-full text-left mb-6">
+                  <label className="text-[9px] font-black text-olive/50 uppercase tracking-widest block mb-1">
+                    To confirm, please type <span className="text-danger font-bold">DELETE</span>:
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value.toUpperCase())}
+                    placeholder="Type 'DELETE'"
+                    disabled={isDeleting}
+                    className="w-full px-4 py-3 bg-bg-card/25 border border-olive/10 rounded-2xl text-xs font-bold text-ink focus:outline-none focus:border-danger transition-colors text-center font-mono placeholder:font-sans placeholder:italic placeholder:font-normal uppercase"
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-4 w-full">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setDeviceToDelete(null)}
+                    className="flex-1 py-3.5 border border-olive/10 text-olive/60 hover:bg-olive/5 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      isDeleting ||
+                      deleteConfirmText !== 'DELETE' ||
+                      (deviceToDelete.role === 'gateway' && !gatewayCheckboxChecked)
+                    }
+                    onClick={handleUnpair}
+                    className={`flex-1 py-3.5 text-white rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 ${
+                      deleteConfirmText === 'DELETE' && (deviceToDelete.role !== 'gateway' || gatewayCheckboxChecked)
+                        ? 'bg-danger shadow-danger/10 hover:bg-danger/90'
+                        : 'bg-ink/10 text-ink/30 cursor-not-allowed shadow-none border border-ink/5'
+                    }`}
+                  >
+                    {isDeleting ? <RefreshCw size={12} className="animate-spin" /> : null}
+                    Execute Deletion
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+};

@@ -12,7 +12,8 @@ import {
   ChevronRight, 
   Wind, 
   Layers, 
-  Activity 
+  Activity,
+  User
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -28,6 +29,8 @@ interface SidebarProps {
   setIsEcoMode: (v: boolean) => void;
   isSyncing: boolean;
   setIsSyncing: (v: boolean) => void;
+  isAuthenticated: boolean;
+  username: string;
 }
 
 export const Sidebar = ({ 
@@ -41,7 +44,9 @@ export const Sidebar = ({
   isEcoMode,
   setIsEcoMode,
   isSyncing,
-  setIsSyncing
+  setIsSyncing,
+  isAuthenticated,
+  username
 }: SidebarProps) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -107,6 +112,40 @@ export const Sidebar = ({
           </button>
         ))}
       </nav>
+
+      {/* Authentication / Locked Status Card */}
+      {isAuthenticated ? (
+        <button 
+          onClick={() => setActiveView('settings')}
+          className="mx-6 my-4 p-4 bg-olive/5 hover:bg-olive/10 rounded-2xl border border-olive/5 flex items-center gap-3 text-left transition-all cursor-pointer w-[calc(100%-3rem)] group/usercard"
+        >
+          <div className="p-2 bg-olive text-white rounded-xl transition-colors group-hover/usercard:bg-olive/85">
+            <User size={16} />
+          </div>
+          <div>
+            <div className="text-[8px] font-black uppercase text-olive/50 tracking-wider">Active User</div>
+            <div className="text-xs font-bold text-ink">{username}</div>
+          </div>
+        </button>
+      ) : (
+        <div className="mx-6 my-4 p-4 bg-danger/5 rounded-2xl border border-danger/5 flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-danger/10 text-danger rounded-xl animate-pulse">
+              <ShieldAlert size={16} />
+            </div>
+            <div>
+              <div className="text-[8px] font-black uppercase text-danger/50 tracking-wider">Mesh Locked</div>
+              <div className="text-[10px] font-bold text-ink">Sign in to view data</div>
+            </div>
+          </div>
+          <button 
+            onClick={() => setActiveView('settings')}
+            className="w-full py-2 bg-danger/10 hover:bg-danger/25 text-danger rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+          >
+            Login / Signup
+          </button>
+        </div>
+      )}
 
       <div className="p-8 border-t border-olive/5 space-y-4">
         <div className="space-y-3">

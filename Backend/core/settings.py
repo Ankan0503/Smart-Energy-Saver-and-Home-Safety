@@ -20,6 +20,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'telemetry.apps.TelemetryConfig',
+    'accounts.apps.AccountsConfig',
+    'devices.apps.DevicesConfig',
 ]
 
 MIDDLEWARE = [

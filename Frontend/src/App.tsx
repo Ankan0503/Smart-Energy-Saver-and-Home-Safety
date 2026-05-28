@@ -67,6 +67,104 @@ export default function App() {
   const [gasLevel, setGasLevel] = useState(120);
   const [showOverlay, setShowOverlay] = useState<null | 'fire' | 'gas'>(null);
   const [isMuted, setIsMuted] = useState(false);
+  // Tracks whether a safety reset has been performed; hides the restore button afterwards
+  const [resetCompleted, setResetCompleted] = useState(false);
+  const [wasGasLeak, setWasGasLeak] = useState(false);
+  const [wasFire, setWasFire] = useState(false);
+  const [systemStatus, setSystemStatus] = useState('SAFE');
+  const [gatewayMac, setGatewayMac] = useState('');
+
+  const [token, setToken] = useState(() => {
+    const saved = localStorage.getItem('aether_user');
+    return saved ? JSON.parse(saved).token || '' : '';
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    const saved = localStorage.getItem('aether_user');
+    return saved ? true : false;
+  });
+  const [username, setUsername] = useState(() => {
+    const saved = localStorage.getItem('aether_user');
+    return saved ? JSON.parse(saved).username : '';
+  });
+  const [meshId, setMeshId] = useState(() => {
+    const saved = localStorage.getItem('aether_user');
+    return saved ? JSON.parse(saved).mesh_id : '';
+  });
+  const [meshKey, setMeshKey] = useState(() => {
+    const saved = localStorage.getItem('aether_user');
+    return saved ? JSON.parse(saved).mesh_key : '';
+  });
+
+  const checkAuth = async () => {
+    const saved = localStorage.getItem('aether_user');
+    let currentToken = '';
+    if (saved) {
+      try {
+        const user = JSON.parse(saved);
+        setIsAuthenticated(true);
+        setUsername(user.username);
+        setMeshId(user.mesh_id);
+        setMeshKey(user.mesh_key);
+        currentToken = user.token || '';
+        setToken(currentToken);
+      } catch (e) {
+        console.error("Failed to parse cached auth in App:", e);
+      }
+    }
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      const t = currentToken || token;
+      if (t) {
+        headers['Authorization'] = `Bearer ${t}`;
+      }
+      const res = await fetch(`${apiUrl}/api/accounts/me/`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.authenticated) {
+          setIsAuthenticated(true);
+          setUsername(data.username);
+          setMeshId(data.mesh_id);
+          setMeshKey(data.mesh_key);
+          localStorage.setItem('aether_user', JSON.stringify({
+            token: t,
+            username: data.username,
+            mesh_id: data.mesh_id,
+            mesh_key: data.mesh_key
+          }));
+
+          // Fetch user devices to look up the Central Gateway's MAC Address
+          try {
+            const devRes = await fetch(`${apiUrl}/api/devices/`, { headers });
+            if (devRes.ok) {
+              const devData = await devRes.json();
+              // Identify the central controller, which may be a gateway or a relay device
+              const gw = devData.devices.find((d: any) => d.role === 'gateway' || d.role === 'relay');
+              if (gw) {
+                setGatewayMac(gw.mac_address);
+              }
+            }
+          } catch (devErr) {
+            console.error("Failed to fetch user devices on mount:", devErr);
+          }
+        }
+      } else {
+        setIsAuthenticated(false);
+        setUsername('');
+        setMeshId('');
+        setMeshKey('');
+        setToken('');
+        localStorage.removeItem('aether_user');
+      }
+    } catch (e) {
+      console.error("Failed to check auth:", e);
+    }
+  };
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
   const [zones, setZones] = useState([
     { 
       id: 'lr-lights', 
@@ -259,7 +357,11 @@ export default function App() {
     const fetchTelemetry = async () => {
       try {
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        const res = await fetch(`${apiUrl}/api/telemetry/latest/`);
+        const headers: HeadersInit = { 'Content-Type': 'application/json' };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const res = await fetch(`${apiUrl}/api/telemetry/latest/?mesh_id=${meshId}`, { headers });
         if (!res.ok) return;
         const data = await res.json();
         
@@ -271,16 +373,22 @@ export default function App() {
         const fireDetected = data.flame === 0;
         setIsFlame(fireDetected);
 
-        // Manage safety overlays
-        if (fireDetected && showOverlay !== 'fire') {
+        const isGasLeak = data.gas > 3500;
+        const isFire = fireDetected;
+
+        // Manage safety overlays based on transition state
+        if (isFire && !wasFire) {
           setShowOverlay('fire');
-        } else if (data.gas > 3500 && showOverlay !== 'gas' && !fireDetected) {
+        } else if (isGasLeak && !wasGasLeak && !isFire) {
           setShowOverlay('gas');
-        } else if (!fireDetected && data.gas <= 3500) {
-          if (showOverlay === 'fire' || showOverlay === 'gas') {
-            setShowOverlay(null);
-          }
+        } else if (!isGasLeak && !isFire) {
+          setShowOverlay(null);
         }
+
+        // Update transition states
+        setWasGasLeak(isGasLeak);
+        setWasFire(isFire);
+        setSystemStatus(data.status || 'SAFE');
 
         // Handle physical overcurrent relay trip in UI
         if (data.status === 'OVERCURRENT_TRIP') {
@@ -294,7 +402,100 @@ export default function App() {
     fetchTelemetry();
     const interval = setInterval(fetchTelemetry, 1500);
     return () => clearInterval(interval);
+  }, [wasGasLeak, wasFire, token, meshId]);
+
+  const handleResetSafety = async () => {
+    let currentGatewayMac = gatewayMac;
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    if (!currentGatewayMac) {
+      try {
+        const devRes = await fetch(`${apiUrl}/api/devices/`, { headers });
+        if (devRes.ok) {
+          const devData = await devRes.json();
+          // Look for either a gateway or a relay device acting as the central controller
+          const gw = devData.devices.find((d: any) => d.role === 'gateway' || d.role === 'relay');
+          if (gw) {
+            currentGatewayMac = gw.mac_address;
+            setGatewayMac(gw.mac_address);
+          }
+        }
+      } catch (devErr) {
+        console.error("Failed to fetch devices dynamically:", devErr);
+      }
+    }
+
+    if (!currentGatewayMac) {
+      addToast("No Central Gateway registered to reset.", ShieldAlert);
+      return;
+    }
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      addToast("Transmitting safety reset protocols...", Cpu);
+      const res = await fetch(`${apiUrl}/api/devices/reset-safety/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ mac_address: currentGatewayMac })
+      });
+      if (res.ok) {
+        addToast("Relay re-engaged. System safety cleared!", Zap);
+        setSystemStatus('SAFE');
+        setShowOverlay(null);
+        setResetCompleted(true);
+      } else {
+        const errData = await res.json();
+        addToast(errData.error || "Reset command failed.", ShieldAlert);
+      }
+    } catch (err) {
+      console.error("Failed to reset mesh safety:", err);
+      addToast("Network connection error.", ShieldAlert);
+    }
+  };
+
+  useEffect(() => {
+    if (!showOverlay) {
+      setIsMuted(false);
+    }
   }, [showOverlay]);
+
+  const [alertedMacs, setAlertedMacs] = useState<string[]>([]);
+
+  useEffect(() => {
+    const checkUnlinkedDevices = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const headers: HeadersInit = { 'Content-Type': 'application/json' };
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const res = await fetch(`${apiUrl}/api/devices/unlinked/`, { headers });
+        if (!res.ok) return;
+        const data = await res.json();
+        const devices = data.devices || [];
+
+        devices.forEach((dev: any) => {
+          if (!alertedMacs.includes(dev.mac_address)) {
+            addToast(`New device detected: ${dev.mac_address}. Go to Settings to register!`, Globe);
+            setAlertedMacs(prev => [...prev, dev.mac_address]);
+          }
+        });
+      } catch (err) {
+        console.error("Error polling discovered devices:", err);
+      }
+    };
+
+    checkUnlinkedDevices();
+    const interval = setInterval(checkUnlinkedDevices, 5000);
+    return () => clearInterval(interval);
+  }, [alertedMacs, token]);
 
   return (
     <div className="flex min-h-screen bg-bg-base relative">
@@ -339,6 +540,8 @@ export default function App() {
         setIsEcoMode={setIsEcoMode}
         isSyncing={isSyncing}
         setIsSyncing={setIsSyncing}
+        isAuthenticated={isAuthenticated}
+        username={username}
       />
       
       <main className="flex-1 p-12 overflow-y-auto">
@@ -755,7 +958,13 @@ export default function App() {
           )}
 
           {activeView === 'safety' && (
-            <SafetyHubView gasLevel={gasLevel} isFlame={isFlame} />
+            <SafetyHubView 
+              gasLevel={gasLevel} 
+              isFlame={isFlame} 
+              systemStatus={systemStatus}
+              onResetSafety={handleResetSafety}
+              resetCompleted={resetCompleted}
+            />
           )}
 
           {activeView === 'events' && (
@@ -763,7 +972,18 @@ export default function App() {
           )}
 
           {activeView === 'settings' && (
-            <SettingsView />
+            <SettingsView 
+              isAuthenticated={isAuthenticated}
+              setIsAuthenticated={setIsAuthenticated}
+              username={username}
+              setUsername={setUsername}
+              meshId={meshId}
+              setMeshId={setMeshId}
+              meshKey={meshKey}
+              setMeshKey={setMeshKey}
+              token={token}
+              setToken={setToken}
+            />
           )}
         </AnimatePresence>
       </main>
