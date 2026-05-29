@@ -45,6 +45,7 @@ def on_message(client, userdata, msg):
             mac = data.get("mac")
             gas = data.get("gas", 0)
             current = data.get("current", 0)
+            pir = 1 if int(data.get("pir", 1)) else 0
             flame = data.get("flame", 1)
             status = data.get("status", "SAFE")
             
@@ -64,6 +65,7 @@ def on_message(client, userdata, msg):
                 device=device,
                 gas=gas,
                 current=current,
+                pir=pir,
                 flame=flame,
                 status=status
             )

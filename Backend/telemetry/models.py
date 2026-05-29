@@ -5,6 +5,7 @@ class TelemetryReading(models.Model):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, null=True, blank=True, related_name='readings')
     gas = models.IntegerField()
     current = models.IntegerField()
+    pir = models.IntegerField(default=1)
     flame = models.IntegerField()
     status = models.CharField(max_length=50)
     timestamp = models.DateTimeField(auto_now_add=True)

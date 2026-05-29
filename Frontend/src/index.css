@@ -44,3 +44,16 @@
   text-shadow: 0 0 15px rgba(143, 161, 137, 0.2);
 }
 
+.hazard-warning {
+  animation: hazard-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes hazard-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(188, 71, 73, 0.22), 0 10px 40px rgba(62, 66, 58, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(188, 71, 73, 0.08), 0 18px 52px rgba(188, 71, 73, 0.14);
+  }
+}
+

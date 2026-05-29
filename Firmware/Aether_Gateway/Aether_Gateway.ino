@@ -6,10 +6,15 @@
 #include <Preferences.h>
 #include <WiFiManager.h>
 
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+
 // ==========================================
 // HARDWARE PIN CONFIGURATIONS
 // ==========================================
 const int CURRENT_PIN = 34;  // Analog Input (Current Sensor)
+const int PIR_PIN     = 33;  // Digital Input (PIR Motion Sensor)
 const int RELAY_PIN   = 23;  // Digital Output (Main Relay)
 const int BUZZER_PIN  = 25;  // PWM Output (Buzzer)
 const int RESET_PIN   = 0;   // Physical BOOT Button (GPIO 0)
@@ -31,10 +36,23 @@ String meshKey = "";
 // ==========================================
 // MQTT CLOUD BROKER CONFIGURATIONS
 // ==========================================
-const char* mqtt_server = "169fcd2ed88c4bea9849d15fc9fea600.s1.eu.hivemq.cloud";
-const int mqtt_port     = 8883; // Secure TLS
-const char* mqtt_user   = "aether";
-const char* mqtt_pass   = "3UemS5@sbbD5Wj9";
+#ifndef MQTT_SERVER
+#define MQTT_SERVER "your-hivemq-host"
+#endif
+#ifndef MQTT_PORT
+#define MQTT_PORT 8883
+#endif
+#ifndef MQTT_USER
+#define MQTT_USER "your-mqtt-username"
+#endif
+#ifndef MQTT_PASS
+#define MQTT_PASS "your-mqtt-password"
+#endif
+
+const char* mqtt_server = MQTT_SERVER;
+const int mqtt_port     = MQTT_PORT; // Secure TLS
+const char* mqtt_user   = MQTT_USER;
+const char* mqtt_pass   = MQTT_PASS;
 
 WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
@@ -138,9 +156,32 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
             if (mqttClient.connected()) {
                 char safePayload[256];
                 snprintf(safePayload, sizeof(safePayload), 
-                         "{\"mac\":\"%s\",\"gas\":0,\"current\":0,\"flame\":1,\"status\":\"SAFE\"}", 
+                         "{\"mac\":\"%s\",\"gas\":0,\"current\":0,\"pir\":1,\"flame\":1,\"status\":\"SAFE\"}", 
                          getMacAddress().c_str());
                 mqttClient.publish("aether/telemetry", safePayload);
+            }
+        }
+    } else if (action == "BUZZER_ALERT") {
+        if (targetMac.equalsIgnoreCase(getMacAddress())) {
+            ledcWriteNote(BUZZER_PIN, NOTE_C, 5);
+            currentStatus = "HAZARD_WARNING";
+            Serial.println("Cloud hazard command: buzzer alert enabled");
+        }
+    } else if (action == "SHUT_SOLENOID") {
+        if (targetMac.equalsIgnoreCase(getMacAddress())) {
+            int riskScore = doc.containsKey("risk_score") ? doc["risk_score"].as<int>() : 100;
+            isTripped = true;
+            currentStatus = "HAZARD_SHUTOFF";
+            digitalWrite(RELAY_PIN, LOW); // De-energize relay/solenoid safety line
+            ledcWriteNote(BUZZER_PIN, NOTE_C, 5);
+            Serial.println("Cloud hazard command: solenoid safety shutoff engaged");
+
+            if (mqttClient.connected()) {
+                char hazardPayload[256];
+                snprintf(hazardPayload, sizeof(hazardPayload),
+                         "{\"mac\":\"%s\",\"gas\":%d,\"current\":0,\"pir\":1,\"flame\":0,\"status\":\"HAZARD_SHUTOFF\"}",
+                         getMacAddress().c_str(), riskScore * 40);
+                mqttClient.publish("aether/telemetry", hazardPayload);
             }
         }
     }
@@ -207,6 +248,7 @@ void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* data, int len)
             
             int subnodeGas = doc.containsKey("gas") ? doc["gas"].as<int>() : 4000;
             int subnodeFlame = doc.containsKey("flame") ? doc["flame"].as<int>() : 1;
+            int subnodePir = doc.containsKey("pir") ? doc["pir"].as<int>() : 1;
             
             digitalWrite(RELAY_PIN, LOW); // Trip the Relay
             ledcWriteNote(BUZZER_PIN, NOTE_C, 5); // Warning alarm
@@ -216,8 +258,8 @@ void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* data, int len)
             if (mqttClient.connected()) {
                 char alertPayload[256];
                 snprintf(alertPayload, sizeof(alertPayload), 
-                         "{\"mac\":\"%s\",\"gas\":%d,\"current\":0,\"flame\":%d,\"status\":\"%s\"}", 
-                         nodeMac.c_str(), subnodeGas, subnodeFlame, subnodeStatus.c_str());
+                         "{\"mac\":\"%s\",\"gas\":%d,\"current\":0,\"pir\":%d,\"flame\":%d,\"status\":\"%s\"}", 
+                         nodeMac.c_str(), subnodeGas, subnodePir, subnodeFlame, subnodeStatus.c_str());
                 mqttClient.publish("aether/telemetry", alertPayload);
             }
         }
@@ -228,6 +270,7 @@ void setup() {
     Serial.begin(115200);
     
     pinMode(CURRENT_PIN, INPUT);
+    pinMode(PIR_PIN, INPUT);
     pinMode(RELAY_PIN, OUTPUT);
     pinMode(RESET_PIN, INPUT_PULLUP);
     
@@ -328,6 +371,7 @@ void loop() {
 
     // Local overcurrent protection check
     int currentRaw = analogRead(CURRENT_PIN);
+    int pirState = digitalRead(PIR_PIN) == HIGH ? 1 : 0;
     if (currentRaw > CURRENT_THRESHOLD && !isTripped) {
         isTripped = true;
         currentStatus = "OVERCURRENT_TRIP";
@@ -369,8 +413,8 @@ void loop() {
         if (mqttClient.connected()) {
             char payload[256];
             snprintf(payload, sizeof(payload),
-                     "{\"mac\":\"%s\",\"gas\":0,\"current\":%d,\"flame\":1,\"status\":\"%s\"}",
-                     getMacAddress().c_str(), currentRaw, currentStatus.c_str());
+                     "{\"mac\":\"%s\",\"gas\":0,\"current\":%d,\"pir\":%d,\"flame\":1,\"status\":\"%s\"}",
+                     getMacAddress().c_str(), currentRaw, pirState, currentStatus.c_str());
             mqttClient.publish("aether/telemetry", payload);
             Serial.println("Published Gateway Telemetry");
         }

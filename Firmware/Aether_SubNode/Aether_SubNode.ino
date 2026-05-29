@@ -9,6 +9,7 @@
 // ==========================================
 const int FLAME_PIN   = 32;  // Digital Input (Flame Sensor)
 const int GAS_PIN     = 35;  // Analog Input (Gas Sensor)
+const int PIR_PIN     = 33;  // Digital Input (PIR Motion Sensor)
 const int BUZZER_PIN  = 25;  // PWM Output (Local Alarm)
 const int RESET_PIN   = 0;   // Physical BOOT Button
 const int STATUS_LED  = 2;   // Onboard Blue Status LED
@@ -159,6 +160,7 @@ void setup() {
 
     pinMode(FLAME_PIN, INPUT_PULLUP);
     pinMode(GAS_PIN, INPUT);
+    pinMode(PIR_PIN, INPUT);
     pinMode(RESET_PIN, INPUT_PULLUP);
     pinMode(STATUS_LED, OUTPUT);
 
@@ -269,6 +271,7 @@ void loop() {
         // Read physical sensors
         int flameState = digitalRead(FLAME_PIN); // 0 = Fire, 1 = Safe
         int gasValue = analogRead(GAS_PIN);
+        int pirState = digitalRead(PIR_PIN) == HIGH ? 1 : 0;
 
         bool hasEmergency = (flameState == LOW) || (gasValue > GAS_THRESHOLD);
         String statusText = "SAFE";
@@ -291,11 +294,11 @@ void loop() {
             if (!wasEmergency || (now - lastTripSent > 3000)) {
                 lastTripSent = now;
                 uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-                char tripPayload[220];
+                char tripPayload[250];
                 // Cryptographic Mesh verification signature
                 snprintf(tripPayload, sizeof(tripPayload),
-                         "{\"action\":\"TRIP_RELAY\",\"mac\":\"%s\",\"mesh_id\":\"%s\",\"signature\":\"%s\",\"status\":\"%s\",\"gas\":%d,\"flame\":%d}",
-                         getMacAddress().c_str(), meshId.c_str(), meshKey.c_str(), statusText.c_str(), gasValue, flameState);
+                         "{\"action\":\"TRIP_RELAY\",\"mac\":\"%s\",\"mesh_id\":\"%s\",\"signature\":\"%s\",\"status\":\"%s\",\"gas\":%d,\"current\":0,\"pir\":%d,\"flame\":%d}",
+                         getMacAddress().c_str(), meshId.c_str(), meshKey.c_str(), statusText.c_str(), gasValue, pirState, flameState);
                 
                 esp_now_send(broadcastAddress, (uint8_t *) tripPayload, strlen(tripPayload));
                 Serial.println("🚨 EMERGENCY SHUTDOWN broadcast sent: " + String(tripPayload));
@@ -311,8 +314,8 @@ void loop() {
             uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
             char telemetryPayload[256];
             snprintf(telemetryPayload, sizeof(telemetryPayload),
-                     "{\"action\":\"TELEMETRY\",\"mac\":\"%s\",\"mesh_id\":\"%s\",\"gas\":%d,\"current\":0,\"flame\":%d,\"status\":\"%s\"}",
-                     getMacAddress().c_str(), meshId.c_str(), gasValue, flameState, statusText.c_str());
+                     "{\"action\":\"TELEMETRY\",\"mac\":\"%s\",\"mesh_id\":\"%s\",\"gas\":%d,\"current\":0,\"pir\":%d,\"flame\":%d,\"status\":\"%s\"}",
+                     getMacAddress().c_str(), meshId.c_str(), gasValue, pirState, flameState, statusText.c_str());
             
             esp_now_send(broadcastAddress, (uint8_t *) telemetryPayload, strlen(telemetryPayload));
             Serial.println("Sent telemetry payload over ESP-NOW");

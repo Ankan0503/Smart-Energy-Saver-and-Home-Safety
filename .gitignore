@@ -10,3 +10,5 @@ coverage/
 venv/
 __pycache__/
 *.sqlite3
+Backend/anomaly/models/*.joblib
+Firmware/**/secrets.h

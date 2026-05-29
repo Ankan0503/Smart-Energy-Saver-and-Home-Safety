@@ -14,6 +14,7 @@ def get_latest_telemetry(request):
             return JsonResponse({
                 "gas": 0,
                 "current": 0,
+                "pir": 1,
                 "flame": 1,
                 "status": "SAFE",
                 "timestamp": None,
@@ -27,6 +28,7 @@ def get_latest_telemetry(request):
             return JsonResponse({
                 "gas": 0,
                 "current": 0,
+                "pir": 1,
                 "flame": 1,
                 "status": "SAFE",
                 "timestamp": None,
@@ -56,6 +58,7 @@ def get_latest_telemetry(request):
                 return JsonResponse({
                     "gas": 0,
                     "current": 0,
+                    "pir": 1,
                     "flame": 1,
                     "status": "SAFE",
                     "timestamp": None,
@@ -67,6 +70,7 @@ def get_latest_telemetry(request):
         max_gas = max(r.gas for r in latest_readings)
         min_flame = min(r.flame for r in latest_readings) # Active-LOW: 0 means fire, 1 means safe
         max_current = max(r.current for r in latest_readings)
+        min_pir = min(r.pir for r in latest_readings) # 0 means at least one active device reports no occupancy
         
         # Propagate warning statuses if any active device has it
         status = "SAFE"
@@ -81,6 +85,7 @@ def get_latest_telemetry(request):
         data = {
             "gas": max_gas,
             "current": max_current,
+            "pir": min_pir,
             "flame": min_flame,
             "status": status,
             "timestamp": absolute_latest.timestamp.isoformat(),
@@ -92,6 +97,7 @@ def get_latest_telemetry(request):
         data = {
             "gas": 0,
             "current": 0,
+            "pir": 1,
             "flame": 1,
             "status": "SAFE",
             "timestamp": None,

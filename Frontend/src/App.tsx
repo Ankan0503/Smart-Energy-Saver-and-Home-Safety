@@ -62,7 +62,6 @@ export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [isEcoMode, setIsEcoMode] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isSecurityLocked, setIsSecurityLocked] = useState(true);
   const [isFlame, setIsFlame] = useState(false);
   const [gasLevel, setGasLevel] = useState(120);
   const [showOverlay, setShowOverlay] = useState<null | 'fire' | 'gas'>(null);
@@ -73,6 +72,16 @@ export default function App() {
   const [wasFire, setWasFire] = useState(false);
   const [systemStatus, setSystemStatus] = useState('SAFE');
   const [gatewayMac, setGatewayMac] = useState('');
+  const [liveTelemetry, setLiveTelemetry] = useState<any>({ gas: 0, current: 0, pir: 1, flame: 1, status: 'SAFE' });
+  const [sensorData, setSensorData] = useState<any[]>([]);
+  const [hazardRisk, setHazardRisk] = useState<any>(null);
+  const [anomalyResult, setAnomalyResult] = useState<any>(null);
+  const [energyRecommendations, setEnergyRecommendations] = useState<any>(null);
+  const [apiStatus, setApiStatus] = useState({
+    hazard: 'connecting',
+    anomaly: 'connecting',
+    recommendations: 'connecting'
+  });
 
   const [token, setToken] = useState(() => {
     const saved = localStorage.getItem('aether_user');
@@ -255,6 +264,19 @@ export default function App() {
 
   const [data, setData] = useState(generateChartData());
 
+  const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  const authHeaders = (withJson = true): HeadersInit => {
+    const headers: HeadersInit = {};
+    if (withJson) {
+      headers['Content-Type'] = 'application/json';
+    }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  };
+
   const fetchAiSuggestions = async () => {
     setIsAiLoading(true);
     addToast("Consulting Mesh Intelligence...", Cpu);
@@ -270,11 +292,35 @@ export default function App() {
     setIsInsightLoading(false);
   };
 
+  const fetchEnergyRecommendations = async () => {
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/recommendations/energy/?days=30`, {
+        headers: authHeaders()
+      });
+      if (!res.ok) {
+        setApiStatus(prev => ({ ...prev, recommendations: 'offline' }));
+        return;
+      }
+      const payload = await res.json();
+      setEnergyRecommendations(payload);
+      setApiStatus(prev => ({ ...prev, recommendations: 'live' }));
+    } catch (err) {
+      console.error("Error fetching AI energy recommendations:", err);
+      setApiStatus(prev => ({ ...prev, recommendations: 'offline' }));
+    }
+  };
+
   useEffect(() => {
     if (activeView === 'analytics' && !energyInsight && !isInsightLoading) {
       fetchEnergyInsights();
     }
   }, [activeView]);
+
+  useEffect(() => {
+    fetchEnergyRecommendations();
+    const interval = setInterval(fetchEnergyRecommendations, 60000);
+    return () => clearInterval(interval);
+  }, [token]);
 
   const [selectedZone, setSelectedZone] = useState<null | typeof zones[0]>(null);
   const [analyticsRange, setAnalyticsRange] = useState('Week');
@@ -356,25 +402,82 @@ export default function App() {
   useEffect(() => {
     const fetchTelemetry = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        const headers: HeadersInit = { 'Content-Type': 'application/json' };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-        const res = await fetch(`${apiUrl}/api/telemetry/latest/?mesh_id=${meshId}`, { headers });
+        const headers = authHeaders();
+        const res = await fetch(`${apiBaseUrl}/api/telemetry/latest/?mesh_id=${meshId}`, { headers });
         if (!res.ok) return;
         const data = await res.json();
+        const rawGas = Number(data.gas || 0);
+        const rawCurrent = Number(data.current || 0);
+        const rawPir = Number(data.pir ?? 1);
+        const rawFlame = Number(data.flame ?? 1);
+        setLiveTelemetry(data);
         
         // Scale 12-bit ADC value (0-4095) down to UI scale (e.g., 3500 raw -> 350)
-        const uiGasLevel = data.gas / 10;
+        const uiGasLevel = rawGas / 10;
         setGasLevel(uiGasLevel);
         
         // flame == 0 means fire detected (Active-LOW)
-        const fireDetected = data.flame === 0;
+        const fireDetected = rawFlame === 0;
         setIsFlame(fireDetected);
 
-        const isGasLeak = data.gas > 3500;
+        const isGasLeak = rawGas > 3500;
         const isFire = fireDetected;
+
+        try {
+          const hazardRes = await fetch(`${apiBaseUrl}/api/hazards/predict/`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              gas: rawGas,
+              flame: rawFlame,
+              device_mac: data.device_mac || gatewayMac,
+              trigger_actions: false
+            })
+          });
+          if (hazardRes.ok) {
+            const hazardPayload = await hazardRes.json();
+            setHazardRisk(hazardPayload);
+            setApiStatus(prev => ({ ...prev, hazard: 'live' }));
+            setSensorData(prev => {
+              const nextPoint = {
+                name: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                current: rawCurrent,
+                gas: Math.round(rawGas / 10),
+                risk: hazardPayload.risk_score ?? 0
+              };
+              return [...prev.slice(-23), nextPoint];
+            });
+          } else {
+            setApiStatus(prev => ({ ...prev, hazard: 'offline' }));
+          }
+        } catch (hazardErr) {
+          console.error("Error fetching hazard prediction:", hazardErr);
+          setApiStatus(prev => ({ ...prev, hazard: 'offline' }));
+        }
+
+        try {
+          const anomalyRes = await fetch(`${apiBaseUrl}/api/anomaly/phantom-current/`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              current: rawCurrent,
+              pir: rawPir,
+              hour_of_day: new Date().getHours(),
+              sample_window_minutes: 1
+            })
+          });
+          if (anomalyRes.ok) {
+            setAnomalyResult(await anomalyRes.json());
+            setApiStatus(prev => ({ ...prev, anomaly: 'live' }));
+          } else if (anomalyRes.status === 503) {
+            setApiStatus(prev => ({ ...prev, anomaly: 'model pending' }));
+          } else {
+            setApiStatus(prev => ({ ...prev, anomaly: 'offline' }));
+          }
+        } catch (anomalyErr) {
+          console.error("Error fetching anomaly prediction:", anomalyErr);
+          setApiStatus(prev => ({ ...prev, anomaly: 'offline' }));
+        }
 
         // Manage safety overlays based on transition state
         if (isFire && !wasFire) {
@@ -402,7 +505,7 @@ export default function App() {
     fetchTelemetry();
     const interval = setInterval(fetchTelemetry, 1500);
     return () => clearInterval(interval);
-  }, [wasGasLeak, wasFire, token, meshId]);
+  }, [wasGasLeak, wasFire, token, meshId, gatewayMac]);
 
   const handleResetSafety = async () => {
     let currentGatewayMac = gatewayMac;
@@ -843,9 +946,13 @@ export default function App() {
                 setSelectedZone(zone);
                 setActiveView('zones');
               }}
-              isSecurityLocked={isSecurityLocked}
-              setIsSecurityLocked={setIsSecurityLocked}
               onGoToSafety={() => setActiveView('safety')}
+              liveTelemetry={liveTelemetry}
+              sensorData={sensorData}
+              hazardRisk={hazardRisk}
+              anomalyResult={anomalyResult}
+              energyRecommendations={energyRecommendations}
+              apiStatus={apiStatus}
             />
           )}
 
