@@ -22,7 +22,7 @@ model predictions.
 Train from real Django telemetry history:
 
 ```powershell
-python Backend\manage.py train_anomaly_model --days 90 --min-rows 500
+python Backend\manage.py train_anomaly_model --minutes 30 --min-rows 500
 ```
 
 Alternatively, train from a custom Supabase/Postgres table. The table must

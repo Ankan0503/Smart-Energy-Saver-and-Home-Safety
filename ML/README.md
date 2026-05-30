@@ -14,7 +14,7 @@ current in smart home energy readings.
 Recommended production training uses the Django telemetry table:
 
 ```powershell
-python Backend\manage.py train_anomaly_model --days 90 --min-rows 500
+python Backend\manage.py train_anomaly_model --minutes 30 --min-rows 500
 ```
 
 You can also train from a custom Supabase/Postgres table through `DATABASE_URL`:

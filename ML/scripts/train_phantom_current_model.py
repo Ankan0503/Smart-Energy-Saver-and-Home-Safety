@@ -132,7 +132,7 @@ def load_history(args: argparse.Namespace) -> pd.DataFrame:
 
 def preprocess_history(history: pd.DataFrame, min_rows: int = 500) -> pd.DataFrame:
     if history.empty:
-        raise RuntimeError('No training rows were returned from Supabase.')
+        raise RuntimeError('No training rows were returned for the selected training window.')
 
     frame = history.copy()
     frame['timestamp'] = pd.to_datetime(frame['timestamp'], utc=True, errors='coerce')
