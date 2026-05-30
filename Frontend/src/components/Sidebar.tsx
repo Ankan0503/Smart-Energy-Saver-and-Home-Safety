@@ -48,68 +48,110 @@ export const Sidebar = ({
   isAuthenticated,
   username
 }: SidebarProps) => {
-  const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'zones', label: 'Energy Zones', icon: Zap, badge: zonesCount },
-    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
-    { id: 'controls', label: 'Manual Control', icon: Power },
-    { id: 'safety', label: 'Safety Hub', icon: ShieldAlert, alert: alertActive },
-    { id: 'automation', label: 'Automation', icon: Cpu },
-    { id: 'events', label: 'System Events', icon: Bell },
-    { id: 'settings', label: 'Configuration', icon: Settings },
+  const menuGroups = [
+    {
+      title: 'Overview',
+      items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+        { id: 'zones', label: 'Energy Zones', icon: Zap, badge: zonesCount },
+        { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+      ],
+    },
+    {
+      title: 'Operations',
+      items: [
+        { id: 'controls', label: 'Manual Control', icon: Power },
+        { id: 'safety', label: 'Safety Hub', icon: ShieldAlert, alert: alertActive },
+        { id: 'automation', label: 'Automation', icon: Cpu },
+      ],
+    },
+    {
+      title: 'System',
+      items: [
+        { id: 'events', label: 'System Events', icon: Bell },
+        { id: 'settings', label: 'Configuration', icon: Settings },
+      ],
+    },
   ];
 
   return (
-    <aside className="w-80 h-screen bg-white border-r border-olive/10 flex flex-col sticky top-0 z-40 overflow-hidden">
-      <div className="p-8 pb-4">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 rounded-2xl bg-olive flex items-center justify-center shadow-lg shadow-olive/10">
-            <Cpu size={22} className="text-white" />
+    <aside className="fixed inset-x-0 bottom-0 z-40 h-auto bg-white/95 border-t border-olive/10 shadow-[0_-14px_40px_rgba(62,66,58,0.08)] backdrop-blur-xl md:sticky md:inset-x-auto md:bottom-auto md:top-0 md:w-[280px] 2xl:w-[304px] md:h-dvh md:bg-white md:border-t-0 md:border-r md:shadow-none flex flex-col overflow-hidden safe-bottom">
+      <div className="hidden md:block px-6 pt-6 pb-5 border-b border-olive/5">
+        <button
+          onClick={() => setActiveView('dashboard')}
+          className="flex w-full items-center gap-3 rounded-2xl text-left transition-colors hover:bg-bg-card/35"
+        >
+          <div className="w-11 h-11 rounded-2xl bg-olive flex items-center justify-center shadow-lg shadow-olive/10">
+            <Cpu size={21} className="text-white" />
           </div>
-          <div>
-            <span className="block font-display font-bold text-xl text-ink leading-none">AETHER.</span>
-            <span className="text-[8px] font-black uppercase text-olive tracking-[0.3em]">Mesh OS v2.4</span>
+          <div className="min-w-0">
+            <span className="block font-display font-bold text-2xl text-ink leading-none tracking-normal">AETHER.</span>
+            <span className="mt-1.5 block text-[9px] font-black uppercase text-olive tracking-[0.28em]">Mesh OS v2.4</span>
           </div>
-        </div>
+        </button>
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-6 py-2 space-y-1.5 custom-scrollbar">
-        <div className="px-3 mb-4">
-          <span className="text-[9px] font-black uppercase text-ink/20 tracking-[0.2em]">Management</span>
-        </div>
-        {menuItems.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveView(item.id)}
-            className={cn(
-              "w-full flex items-center justify-between px-4 py-3.5 rounded-[1.5rem] transition-all group relative",
-              activeView === item.id 
-                ? "bg-bg-card shadow-sm border border-olive/5 text-ink" 
-                : "text-ink/40 hover:bg-bg-card/40 hover:text-ink border border-transparent"
-            )}
-          >
-            <div className="flex items-center gap-4">
-              <div className={cn(
-                "p-2 rounded-xl transition-colors",
-                activeView === item.id ? "bg-white text-olive shadow-sm" : "group-hover:bg-white group-hover:text-olive"
-              )}>
-                <item.icon size={18} />
-              </div>
-              <span className="text-[11px] font-black uppercase tracking-widest">{item.label}</span>
+      <nav className="flex gap-2 overflow-x-auto px-3 py-2 touch-pan-x no-scrollbar md:flex-1 md:block md:overflow-y-auto md:overflow-x-hidden md:px-4 md:py-5 md:space-y-6 custom-scrollbar">
+        {menuGroups.map((group) => (
+          <div key={group.title} className="contents md:block md:space-y-1.5">
+            <div className="hidden md:block px-3 pb-1">
+              <span className="text-[10px] font-black uppercase text-ink/25 tracking-[0.18em]">{group.title}</span>
             </div>
-            <div className="flex items-center gap-2">
-              {item.badge && (
-                <span className="px-1.5 py-0.5 rounded-lg bg-olive/10 text-olive text-[8px] font-black">{item.badge}</span>
-              )}
-              {item.alert && (
-                <div className="w-2 h-2 rounded-full bg-danger animate-pulse shadow-sm shadow-danger/20" />
-              )}
-              <ChevronRight size={14} className={cn("transition-transform", activeView === item.id ? "opacity-100" : "opacity-0 group-hover:opacity-40")} />
-            </div>
-            {activeView === item.id && (
-              <motion.div layoutId="nav-glow" className="absolute inset-0 bg-olive/[0.02] rounded-[1.5rem] pointer-events-none" />
-            )}
-          </button>
+            {group.items.map((item) => {
+              const isActive = activeView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveView(item.id)}
+                  className={cn(
+                    "min-w-[78px] flex flex-col items-center justify-center gap-1.5 px-2 py-2.5 rounded-2xl transition-all group relative border md:min-w-0 md:w-full md:flex-row md:justify-between md:px-3 md:py-2.5 md:rounded-2xl",
+                    isActive
+                      ? "bg-olive text-white border-olive shadow-sm shadow-olive/10"
+                      : "text-ink/45 border-transparent hover:bg-bg-card/40 hover:text-ink"
+                  )}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="desktop-nav-active"
+                      className="hidden md:block absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-white/80"
+                    />
+                  )}
+                  <div className="flex flex-col items-center gap-1.5 md:flex-row md:gap-3">
+                    <div
+                      className={cn(
+                        "h-8 w-8 rounded-xl flex items-center justify-center transition-colors",
+                        isActive ? "bg-white/15 text-white" : "bg-transparent text-ink/35 group-hover:bg-white group-hover:text-olive"
+                      )}
+                    >
+                      <item.icon size={17} />
+                    </div>
+                    <span className="max-w-[66px] truncate text-[9px] font-black uppercase tracking-normal leading-none md:max-w-[154px] md:text-[10px] md:tracking-[0.12em]">
+                      {item.label}
+                    </span>
+                  </div>
+                  <div className="absolute right-2 top-2 flex items-center gap-2 md:static">
+                    {item.badge && (
+                      <span
+                        className={cn(
+                          "px-1.5 py-0.5 rounded-lg text-[8px] font-black",
+                          isActive ? "bg-white/15 text-white" : "bg-olive/10 text-olive"
+                        )}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                    {item.alert && (
+                      <span className={cn("w-2 h-2 rounded-full animate-pulse", isActive ? "bg-white" : "bg-danger shadow-sm shadow-danger/20")} />
+                    )}
+                    <ChevronRight
+                      size={14}
+                      className={cn("hidden md:block transition-all", isActive ? "opacity-80" : "opacity-0 group-hover:opacity-40 group-hover:translate-x-0.5")}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         ))}
       </nav>
 
@@ -117,37 +159,38 @@ export const Sidebar = ({
       {isAuthenticated ? (
         <button 
           onClick={() => setActiveView('settings')}
-          className="mx-6 my-4 p-4 bg-olive/5 hover:bg-olive/10 rounded-2xl border border-olive/5 flex items-center gap-3 text-left transition-all cursor-pointer w-[calc(100%-3rem)] group/usercard"
+          className="hidden md:flex mx-4 mb-4 p-3.5 bg-bg-card/30 hover:bg-bg-card/55 rounded-2xl border border-olive/5 items-center gap-3 text-left transition-all cursor-pointer w-[calc(100%-2rem)] group/usercard"
         >
-          <div className="p-2 bg-olive text-white rounded-xl transition-colors group-hover/usercard:bg-olive/85">
+          <div className="h-9 w-9 bg-olive text-white rounded-xl transition-colors group-hover/usercard:bg-olive/85 flex items-center justify-center">
             <User size={16} />
           </div>
-          <div>
-            <div className="text-[8px] font-black uppercase text-olive/50 tracking-wider">Active User</div>
-            <div className="text-xs font-bold text-ink">{username}</div>
+          <div className="min-w-0 flex-1">
+            <div className="text-[8px] font-black uppercase text-olive/55 tracking-wider">Active User</div>
+            <div className="truncate text-xs font-bold text-ink">{username}</div>
           </div>
+          <ChevronRight size={14} className="text-ink/25 transition-transform group-hover/usercard:translate-x-0.5" />
         </button>
       ) : (
-        <div className="mx-6 my-4 p-4 bg-danger/5 rounded-2xl border border-danger/5 flex flex-col gap-2">
+        <div className="hidden md:flex mx-4 mb-4 p-3.5 bg-danger/5 rounded-2xl border border-danger/10 flex-col gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-danger/10 text-danger rounded-xl animate-pulse">
+            <div className="h-9 w-9 bg-danger/10 text-danger rounded-xl animate-pulse flex items-center justify-center">
               <ShieldAlert size={16} />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="text-[8px] font-black uppercase text-danger/50 tracking-wider">Mesh Locked</div>
-              <div className="text-[10px] font-bold text-ink">Sign in to view data</div>
+              <div className="text-xs font-bold text-ink">Sign in to view data</div>
             </div>
           </div>
           <button 
             onClick={() => setActiveView('settings')}
-            className="w-full py-2 bg-danger/10 hover:bg-danger/25 text-danger rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
+            className="w-full py-2.5 bg-danger/10 hover:bg-danger/20 text-danger rounded-xl text-[9px] font-black uppercase tracking-widest transition-all"
           >
             Login / Signup
           </button>
         </div>
       )}
 
-      <div className="p-8 border-t border-olive/5 space-y-4">
+      <div className="hidden md:block p-4 border-t border-olive/5 space-y-3 bg-white">
         <div className="space-y-3">
           <button 
             onClick={() => {
@@ -167,7 +210,7 @@ export const Sidebar = ({
               );
             }}
             className={cn(
-              "w-full py-4 rounded-[2rem] text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-xl group relative overflow-hidden",
+              "w-full py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.14em] transition-all flex items-center justify-center gap-3 shadow-lg group relative overflow-hidden",
               metrics.activeCount > 0 ? "bg-ink text-white shadow-ink/20 hover:bg-danger" : "bg-olive text-white shadow-olive/20 hover:bg-sage"
             )}
           >
@@ -176,14 +219,14 @@ export const Sidebar = ({
             <span className="relative z-10">{metrics.activeCount > 0 ? 'Master Override' : 'System Restore'}</span>
           </button>
           
-          <div className="p-1.5 bg-bg-card rounded-full flex gap-1 border border-olive/5">
+          <div className="p-1 bg-bg-card/60 rounded-2xl flex gap-1 border border-olive/5">
             <button 
               onClick={() => {
                 setIsEcoMode(!isEcoMode);
                 addToast(isEcoMode ? "Eco Mode Deactivated" : "Eco-Optimization Engaged", TrendingUp);
               }}
               className={cn(
-                "flex-1 py-3 rounded-full text-[9px] font-black uppercase tracking-widest transition-all gap-2 flex items-center justify-center",
+                "flex-1 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all gap-2 flex items-center justify-center",
                 isEcoMode ? "bg-olive text-white shadow-lg shadow-olive/10" : "text-ink/30 hover:text-ink"
               )}
             >
@@ -198,7 +241,7 @@ export const Sidebar = ({
                 setTimeout(() => setIsSyncing(false), 2000);
               }}
               className={cn(
-                "flex-1 py-3 rounded-full text-[9px] font-black uppercase tracking-widest transition-all gap-2 flex items-center justify-center relative overflow-hidden",
+                "flex-1 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all gap-2 flex items-center justify-center relative overflow-hidden",
                 isSyncing ? "bg-bg-card text-olive cursor-wait" : "text-ink/30 hover:text-ink"
               )}
             >
@@ -216,11 +259,11 @@ export const Sidebar = ({
           </div>
         </div>
 
-        <div className="p-6 rounded-[2.5rem] bg-white border border-olive/10 relative overflow-hidden soft-shadow group">
+        <div className="p-4 rounded-2xl bg-bg-card/25 border border-olive/10 relative overflow-hidden group">
           <div className="relative z-10 flex items-center justify-between">
             <div>
-              <div className="text-[9px] font-black uppercase text-ink/20 tracking-widest mb-1 group-hover:text-olive transition-colors">Grid Capacity</div>
-              <div className="text-xl font-display font-medium text-olive">{metrics.totalLoad} <span className="text-[10px] opacity-30">kW</span></div>
+              <div className="text-[9px] font-black uppercase text-ink/30 tracking-widest mb-1 group-hover:text-olive transition-colors">Grid Capacity</div>
+              <div className="text-2xl font-display font-medium text-olive leading-none">{metrics.totalLoad} <span className="text-[10px] opacity-40">kW</span></div>
             </div>
             <div className="relative">
                <div className="w-10 h-10 rounded-full border border-sage/20 flex items-center justify-center">

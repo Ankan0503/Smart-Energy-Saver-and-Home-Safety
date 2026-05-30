@@ -1,5 +1,11 @@
-const CACHE_NAME = 'aether-pwa-v1';
-const APP_SHELL = ['/', '/manifest.webmanifest', '/aether-logo.svg'];
+const CACHE_NAME = 'aether-pwa-v2';
+const APP_SHELL = [
+  '/',
+  '/manifest.webmanifest',
+  '/aether-logo.svg',
+  '/icons/aether-icon-192.png',
+  '/icons/aether-icon-512.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -11,8 +17,11 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+    Promise.all([
+      caches.keys()
+        .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))),
+      self.registration.navigationPreload ? self.registration.navigationPreload.enable() : Promise.resolve(),
+    ])
       .then(() => self.clients.claim())
   );
 });
@@ -20,8 +29,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
+  const isNavigation = event.request.mode === 'navigate';
+
   event.respondWith(
-    fetch(event.request)
+    (isNavigation && event.preloadResponse ? event.preloadResponse : fetch(event.request))
       .then((response) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
@@ -72,4 +83,3 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
-

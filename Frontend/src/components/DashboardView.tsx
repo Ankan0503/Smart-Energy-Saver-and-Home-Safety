@@ -98,7 +98,7 @@ export const DashboardView = ({
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-8 pb-20"
+    className="space-y-6 2xl:space-y-8 pb-20"
     >
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
         <div>
@@ -121,7 +121,7 @@ export const DashboardView = ({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
         {[
           { label: 'Current Load', value: `${metrics.totalLoad} kW`, icon: Zap, sub: `${liveTelemetry?.current ?? 0}A live feed`, tone: 'olive' },
           { label: 'AI Insights', value: recommendationList.length, icon: BrainCircuit, sub: apiStatus?.recommendations || 'ready', tone: 'sage' },
@@ -150,8 +150,8 @@ export const DashboardView = ({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className={`${cardBase} xl:col-span-2 p-6 md:p-8`}>
+      <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
+        <div className={`${cardBase} 2xl:col-span-2 p-6 md:p-8`}>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-widest text-ink">Real-Time Sensor Visualization</h3>
@@ -162,7 +162,7 @@ export const DashboardView = ({
               Live
             </div>
           </div>
-          <div className="h-[360px]">
+          <div className="h-[320px] 2xl:h-[360px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
                 <defs>
@@ -228,7 +228,7 @@ export const DashboardView = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
         <div className={`${cardBase} p-6 md:p-8`}>
           <div className="flex items-center justify-between mb-6">
             <div>

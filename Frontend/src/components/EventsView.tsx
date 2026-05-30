@@ -7,14 +7,14 @@ export const EventsView = () => (
   <motion.div 
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
-    className="space-y-4 pb-20"
+    className="max-w-5xl space-y-4 pb-20"
   >
     {[
       { title: 'System Recalibration', time: '2m ago', type: 'info', desc: 'Main kitchen node triggered thermal threshold reversal.' },
       { title: 'Energy Target Met', time: '1h ago', type: 'success', desc: 'Living room light cycle optimized for daylight.' },
       { title: 'Mesh Topology Update', time: '4h ago', type: 'info', desc: 'Zigbee channels updated for zero-latency drift.' },
     ].map((notif, i) => (
-      <div key={i} className="p-8 rounded-[3rem] bg-white border border-olive/5 shadow-sm flex items-center justify-between group hover:bg-bg-card transition-all">
+      <div key={i} className="p-6 2xl:p-8 rounded-[2.5rem] 2xl:rounded-[3rem] bg-white border border-olive/5 shadow-sm flex items-center justify-between group hover:bg-bg-card transition-all">
         <div className="flex items-center gap-8">
           <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", 
             notif.type === 'danger' ? "bg-danger/10 text-danger" : 

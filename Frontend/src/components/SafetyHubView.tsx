@@ -22,7 +22,7 @@ export const SafetyHubView = ({
   isSecurityLocked,
   setIsSecurityLocked
 }: SafetyHubViewProps) => (
-  <div className="space-y-10 pb-20">
+  <div className="space-y-8 2xl:space-y-10 pb-20">
     {systemStatus !== "SAFE" && !resetCompleted && (
       <motion.div
         initial={{ opacity: 0, y: -20 }}
@@ -55,10 +55,10 @@ export const SafetyHubView = ({
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="grid grid-cols-1 lg:grid-cols-3 gap-10"
+      className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6 2xl:gap-10"
     >
-      <div className={cn("p-12 rounded-[4rem] border-2 transition-all duration-700 bg-white border-olive/5 shadow-sm", isFlame && "border-danger bg-danger/5 shadow-2xl shadow-danger/20")}>
-        <div className="flex justify-between items-start mb-12">
+      <div className={cn("p-6 xl:p-8 2xl:p-12 rounded-[2.5rem] 2xl:rounded-[4rem] border-2 transition-all duration-700 bg-white border-olive/5 shadow-sm", isFlame && "border-danger bg-danger/5 shadow-2xl shadow-danger/20")}>
+        <div className="flex justify-between items-start mb-8 2xl:mb-12">
           <div className="flex items-center gap-6">
             <div className={cn("p-8 rounded-[2.5rem] soft-shadow transition-transform", isFlame ? "bg-danger text-white scale-110" : "bg-bg-card text-ink/30")}>
               <Flame size={48} />
@@ -79,7 +79,7 @@ export const SafetyHubView = ({
         </div>
       </div>
 
-      <div className="p-12 rounded-[4rem] bg-white border border-olive/5 shadow-sm space-y-12">
+      <div className="p-6 xl:p-8 2xl:p-12 rounded-[2.5rem] 2xl:rounded-[4rem] bg-white border border-olive/5 shadow-sm space-y-8 2xl:space-y-12">
         <div>
           <div className="flex items-center gap-6 mb-10">
             <div className={cn("p-8 rounded-[2.5rem] shadow-sm", gasLevel > 300 ? "bg-clay text-white" : "bg-bg-card text-ink/20")}>
@@ -97,7 +97,7 @@ export const SafetyHubView = ({
         </div>
       </div>
 
-      <div className="p-12 rounded-[4rem] bg-olive text-white shadow-2xl shadow-olive/20 relative overflow-hidden flex flex-col min-h-[300px]">
+      <div className="p-6 xl:p-8 2xl:p-12 rounded-[2.5rem] 2xl:rounded-[4rem] bg-olive text-white shadow-2xl shadow-olive/20 relative overflow-hidden flex flex-col min-h-[300px]">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 blur-3xl rounded-full translate-x-1/2 -translate-y-1/2" />
         <ShieldAlert size={140} className="absolute -bottom-10 -right-10 opacity-5" />
         

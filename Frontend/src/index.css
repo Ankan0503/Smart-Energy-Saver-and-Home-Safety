@@ -20,13 +20,63 @@
 }
 
 @layer base {
+  html {
+    min-height: 100%;
+    background: var(--color-bg-base);
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply bg-bg-base text-ink font-sans;
+    min-height: 100%;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  #root {
+    min-height: 100dvh;
   }
   
   h1, h2, h3, h4 {
     @apply font-display tracking-tight text-ink;
   }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
+  button,
+  [role="button"] {
+    min-height: 44px;
+  }
+}
+
+@supports (padding: max(0px)) {
+  .safe-bottom {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .safe-top {
+    padding-top: max(0rem, env(safe-area-inset-top));
+  }
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.touch-pan-x {
+  touch-action: pan-x;
 }
 
 .natural-bg {

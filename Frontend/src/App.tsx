@@ -662,8 +662,8 @@ export default function App() {
   }, [alertedMacs, token]);
 
   return (
-    <div className="flex min-h-screen bg-bg-base relative">
-      <div className="fixed bottom-8 right-8 z-[110] space-y-3 pointer-events-none">
+    <div className="flex min-h-dvh bg-bg-base relative md:flex-row flex-col safe-top">
+      <div className="fixed inset-x-4 bottom-24 md:inset-x-auto md:bottom-8 md:right-8 z-[110] space-y-3 pointer-events-none">
         <AnimatePresence>
           {toasts.map((toast) => (
             <motion.div
@@ -671,7 +671,7 @@ export default function App() {
               initial={{ opacity: 0, x: 50, scale: 0.9 }}
               animate={{ opacity: 1, x: 0, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
-              className="bg-white border border-olive/10 rounded-2xl p-4 shadow-xl soft-shadow min-w-[280px] flex items-center gap-4 pointer-events-auto overflow-hidden relative group/toast"
+              className="bg-white border border-olive/10 rounded-2xl p-4 shadow-xl soft-shadow w-full md:min-w-[280px] md:w-auto flex items-center gap-4 pointer-events-auto overflow-hidden relative group/toast"
             >
               <div className="absolute top-0 left-0 w-1 h-full bg-olive animate-pulse" />
               <div className="p-2 rounded-xl bg-sage/10 text-olive">
@@ -708,7 +708,8 @@ export default function App() {
         username={username}
       />
 
-      <main className="flex-1 p-12 overflow-y-auto">
+      <main className="flex-1 w-full min-w-0 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8 2xl:p-10 pb-32 md:pb-10">
         <AnimatePresence>
           {showOverlay && (
             <SafetyAlertOverlay
@@ -1158,6 +1159,7 @@ export default function App() {
             />
           )}
         </AnimatePresence>
+        </div>
       </main>
     </div>
   );

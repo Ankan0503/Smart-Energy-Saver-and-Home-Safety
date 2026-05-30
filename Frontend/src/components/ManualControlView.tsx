@@ -16,9 +16,9 @@ export const ManualControlView = ({ zones, toggleZone, setZones, addToast }: Man
     key="controls"
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
-    className="max-w-4xl space-y-12 pb-20"
+    className="max-w-6xl space-y-8 2xl:space-y-12 pb-20"
   >
-    <div className="flex justify-between items-end">
+    <div className="flex flex-col xl:flex-row xl:justify-between xl:items-end gap-5">
       <div>
         <h2 className="text-3xl font-display font-medium text-ink mb-2 italic">Manual Override Hub</h2>
         <p className="text-[10px] text-ink/30 font-black uppercase tracking-widest leading-relaxed">Direct node interruption. Bypasses predictive schedules.</p>
@@ -41,9 +41,9 @@ export const ManualControlView = ({ zones, toggleZone, setZones, addToast }: Man
       </div>
     </div>
 
-    <div className="bg-white rounded-[4rem] border border-olive/10 divide-y divide-olive/5 overflow-hidden shadow-sm">
+    <div className="bg-white rounded-[2.5rem] 2xl:rounded-[4rem] border border-olive/10 divide-y divide-olive/5 overflow-hidden shadow-sm">
       {zones.map((zone: any) => (
-        <div key={zone.id} className="p-8 flex items-center justify-between hover:bg-bg-card/30 transition-colors">
+        <div key={zone.id} className="p-5 xl:p-6 2xl:p-8 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5 hover:bg-bg-card/30 transition-colors">
           <div className="flex items-center gap-6">
             <div className={cn("p-4 rounded-2xl bg-bg-card font-bold", zone.active ? zone.color : "text-ink/10")}>
               <zone.icon size={24} />
@@ -53,7 +53,7 @@ export const ManualControlView = ({ zones, toggleZone, setZones, addToast }: Man
               <p className="text-[10px] text-ink/30 font-black uppercase tracking-widest">{zone.type} • {zone.active ? 'Consuming ' + zone.nominalConsumption + 'W' : 'Dormant'}</p>
             </div>
           </div>
-          <div className="flex items-center gap-8">
+          <div className="flex items-center gap-6 2xl:gap-8">
             {zone.active && zone.startTime && (
               <div className="text-right hidden md:block">
                 <div className="text-[8px] font-black text-olive/30 uppercase tracking-widest">Active Time</div>
@@ -92,7 +92,7 @@ export const ManualControlView = ({ zones, toggleZone, setZones, addToast }: Man
       ))}
     </div>
 
-    <div className="p-10 rounded-[3rem] bg-sage/5 border border-sage/10 flex items-center gap-8">
+    <div className="p-6 xl:p-8 2xl:p-10 rounded-[2.5rem] 2xl:rounded-[3rem] bg-sage/5 border border-sage/10 flex items-center gap-6 2xl:gap-8">
       <div className="w-16 h-16 rounded-full bg-sage flex items-center justify-center shrink-0">
         <Info size={32} className="text-white" />
       </div>
