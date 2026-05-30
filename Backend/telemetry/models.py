@@ -39,8 +39,9 @@ class TelemetryReading(models.Model):
         return self._appliance_cache
 
     def __str__(self):
-        device_name = self.device_ref.name if self.device_ref else self.device_id
-        return f"{device_name} ({self.status}) at {self.timestamp}"
+        device_name = self.device.name if self.device else (self.device_id or "Legacy Device")
+        appliance_name = f" - {self.appliance.name}" if self.appliance else ""
+        return f"{device_name}{appliance_name} ({self.status}) at {self.timestamp}"
 
 
 class ApplianceStatePrediction(models.Model):

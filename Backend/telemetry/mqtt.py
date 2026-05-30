@@ -46,7 +46,8 @@ def on_message(client, userdata, msg):
             print(
                 f"Saved Telemetry from {reading.device_id}: current={reading.current}A "
                 f"power={reading.power}W state={prediction.predicted_state if prediction else 'N/A'}"
-            )            
+            )
+            
     except Exception as e:
         print(f"Error parsing MQTT message on {msg.topic}: {e}")
 
