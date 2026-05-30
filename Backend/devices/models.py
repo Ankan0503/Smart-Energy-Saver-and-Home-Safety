@@ -12,6 +12,7 @@ class Device(models.Model):
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='sensor')
     is_paired = models.BooleanField(default=False)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='devices')
+    room = models.ForeignKey('layout.Room', on_delete=models.SET_NULL, null=True, blank=True, related_name='devices')
     last_seen = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

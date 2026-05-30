@@ -22,6 +22,7 @@ urlpatterns = [
     path('api/telemetry/', include('telemetry.urls')),
     path('api/accounts/', include('accounts.urls')),
     path('api/devices/', include('devices.urls')),
+    path('api/layout/', include('layout.urls')),
     path('api/anomaly/', include('anomaly.urls')),
     path('api/recommendations/', include('recommendations.urls')),
     path('api/hazards/', include('hazards.urls')),

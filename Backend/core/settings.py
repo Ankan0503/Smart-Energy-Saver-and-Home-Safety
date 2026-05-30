@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'telemetry.apps.TelemetryConfig',
     'accounts.apps.AccountsConfig',
     'devices.apps.DevicesConfig',
+    'layout.apps.LayoutConfig',
     'anomaly.apps.AnomalyConfig',
     'recommendations.apps.RecommendationsConfig',
     'hazards.apps.HazardsConfig',
