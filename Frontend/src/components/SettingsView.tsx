@@ -12,8 +12,18 @@ import {
   PlusCircle, 
   RefreshCw,
   Layers,
-  Radio
+  Radio,
+  Bell,
+  BellRing,
+  Smartphone
 } from 'lucide-react';
+import {
+  getPushStatus,
+  sendTestNotification,
+  subscribeToPushNotifications,
+  unsubscribeFromPushNotifications,
+  type PushStatus
+} from '../services/pwaService';
 
 interface SettingsViewProps {
   isAuthenticated: boolean;
@@ -65,6 +75,19 @@ export const SettingsView = ({
   const [isDeleting, setIsDeleting] = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  const [pushStatus, setPushStatus] = useState<PushStatus>({
+    supported: false,
+    permission: 'unsupported',
+    subscribed: false,
+    configured: false
+  });
+  const [pushMessage, setPushMessage] = useState('');
+  const [isPushBusy, setIsPushBusy] = useState(false);
+
+  const refreshPushStatus = async () => {
+    const status = await getPushStatus();
+    setPushStatus(status);
+  };
 
   const checkAuth = async () => {
     const saved = localStorage.getItem('aether_user');
@@ -163,6 +186,14 @@ export const SettingsView = ({
     }, 4000);
     return () => clearInterval(interval);
   }, [isAuthenticated, token]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      refreshPushStatus().catch((err) => {
+        console.error("Failed to inspect push status:", err);
+      });
+    }
+  }, [isAuthenticated]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -299,6 +330,48 @@ export const SettingsView = ({
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
+  const handleEnablePush = async () => {
+    setIsPushBusy(true);
+    setPushMessage('');
+    try {
+      await subscribeToPushNotifications(token);
+      await refreshPushStatus();
+      setPushMessage('Push channel armed for this browser.');
+    } catch (err: any) {
+      setPushMessage(err.message || 'Unable to enable push notifications.');
+      await refreshPushStatus().catch(() => undefined);
+    } finally {
+      setIsPushBusy(false);
+    }
+  };
+
+  const handleDisablePush = async () => {
+    setIsPushBusy(true);
+    setPushMessage('');
+    try {
+      await unsubscribeFromPushNotifications(token);
+      await refreshPushStatus();
+      setPushMessage('Push channel disabled for this browser.');
+    } catch (err: any) {
+      setPushMessage(err.message || 'Unable to disable push notifications.');
+    } finally {
+      setIsPushBusy(false);
+    }
+  };
+
+  const handleTestPush = async () => {
+    setIsPushBusy(true);
+    setPushMessage('');
+    try {
+      const result = await sendTestNotification(token);
+      setPushMessage(result.sent > 0 ? 'Test notification sent.' : 'No active browser subscriptions found.');
+    } catch (err: any) {
+      setPushMessage(err.message || 'Test notification failed.');
+    } finally {
+      setIsPushBusy(false);
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <motion.div 
@@ -433,6 +506,53 @@ export const SettingsView = ({
             <div className="text-sm font-bold text-ink italic font-mono selection:bg-olive/20 select-all">{meshKey}</div>
             <p className="text-[8px] text-ink/40 font-bold uppercase tracking-wider mt-1">Do not share. Secures peer-to-peer ESP-NOW</p>
           </div>
+        </div>
+      </div>
+
+      <div className="p-6 bg-bg-card/20 rounded-3xl border border-olive/10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="flex items-start gap-4">
+          <div className={`p-3 rounded-2xl ${pushStatus.subscribed ? 'bg-sage/15 text-sage' : 'bg-olive/10 text-olive'}`}>
+            {pushStatus.subscribed ? <BellRing size={20} /> : <Bell size={20} />}
+          </div>
+          <div>
+            <h4 className="text-[9px] font-black text-olive/50 uppercase tracking-widest mb-1">Browser Push Channel</h4>
+            <div className="text-sm font-bold text-ink italic">
+              {pushStatus.subscribed ? 'Enabled' : pushStatus.permission === 'denied' ? 'Blocked' : 'Not Enabled'}
+            </div>
+            <p className="text-[8px] text-ink/40 font-bold uppercase tracking-wider mt-1">
+              {pushStatus.supported
+                ? pushStatus.configured ? 'PWA service worker linked to Django Web Push' : 'Backend VAPID keys required'
+                : 'Requires HTTPS, localhost, and Push API support'}
+            </p>
+            {pushMessage && (
+              <p className="text-[9px] text-olive/60 font-bold italic mt-2">{pushMessage}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={pushStatus.subscribed ? handleDisablePush : handleEnablePush}
+            disabled={isPushBusy || !pushStatus.supported || !pushStatus.configured || pushStatus.permission === 'denied'}
+            className={`px-5 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${
+              pushStatus.subscribed
+                ? 'border border-danger/10 text-danger hover:bg-danger/5'
+                : 'bg-olive text-white shadow-lg shadow-olive/10 hover:bg-olive/90'
+            } disabled:bg-ink/10 disabled:text-ink/30 disabled:border-transparent disabled:shadow-none`}
+          >
+            {isPushBusy ? <RefreshCw size={12} className="animate-spin" /> : <Smartphone size={12} />}
+            {pushStatus.subscribed ? 'Disable Push' : 'Enable Push'}
+          </button>
+          <button
+            type="button"
+            onClick={handleTestPush}
+            disabled={isPushBusy || !pushStatus.subscribed}
+            className="px-5 py-3 border border-olive/10 text-olive hover:bg-olive/5 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 disabled:text-ink/30 disabled:bg-ink/5"
+          >
+            <Bell size={12} />
+            Test
+          </button>
         </div>
       </div>
 

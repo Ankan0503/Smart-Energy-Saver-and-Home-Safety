@@ -44,6 +44,7 @@ import { SafetyHubView } from './components/SafetyHubView';
 import { SafetyAlertOverlay } from './components/SafetyAlertOverlay';
 import { EventsView } from './components/EventsView';
 import { SettingsView } from './components/SettingsView';
+import { sendHazardNotification } from './services/pwaService';
 
 // Import refactored hook
 import { useAudioAlert } from './hooks/useAudioAlert';
@@ -59,7 +60,10 @@ const generateChartData = (range: string = 'Daily') => {
 };
 
 export default function App() {
-  const [activeView, setActiveView] = useState('dashboard');
+  const [activeView, setActiveView] = useState(() => {
+    const view = new URLSearchParams(window.location.search).get('view');
+    return view || 'dashboard';
+  });
   const [isEcoMode, setIsEcoMode] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSecurityLocked, setIsSecurityLocked] = useState(() => {
@@ -488,8 +492,22 @@ export default function App() {
         // Manage safety overlays based on transition state
         if (isFire && !wasFire) {
           setShowOverlay('fire');
+          sendHazardNotification(token, {
+            hazard_type: 'FIRE',
+            severity: 'critical',
+            risk_score: hazardRisk?.risk_score,
+            title: 'AETHER fire alert',
+            message: 'Flame sensor triggered. Check the safety hub immediately.',
+          });
         } else if (isGasLeak && !wasGasLeak && !isFire) {
           setShowOverlay('gas');
+          sendHazardNotification(token, {
+            hazard_type: 'GAS_LEAK',
+            severity: 'critical',
+            risk_score: hazardRisk?.risk_score,
+            title: 'AETHER gas leak alert',
+            message: `Gas level is high (${rawGas}). Ventilate and inspect the mesh zone immediately.`,
+          });
         } else if (!isGasLeak && !isFire) {
           setShowOverlay(null);
         }
