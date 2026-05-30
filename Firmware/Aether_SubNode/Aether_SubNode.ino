@@ -5,19 +5,41 @@
 #include <esp_wifi.h>
 
 // ==========================================
-// HARDWARE PIN CONFIGURATIONS
+// UNIFIED FIRMWARE COMPILATION SWITCH
 // ==========================================
-const int FLAME_PIN   = 32;  // Digital Input (Flame Sensor)
-const int GAS_PIN     = 35;  // Analog Input (Gas Sensor)
-const int PIR_PIN     = 33;  // Digital Input (PIR Motion Sensor)
-const int BUZZER_PIN  = 25;  // PWM Output (Local Alarm)
+// Uncomment ONLY ONE of the lines below before uploading:
+// #define DEVICE_TYPE_KITCHEN
+#define DEVICE_TYPE_AUTOMATION
+
+// ==========================================
+// CONDITIONAL HARDWARE PIN & CONFIG DEFINITIONS
+// ==========================================
+#ifdef DEVICE_TYPE_KITCHEN
+  const char* NODE_ROLE = "sensor";
+  const int FLAME_PIN   = 32;  // Digital Input (Flame Sensor)
+  const int GAS_PIN     = 35;  // Analog Input (Gas Sensor)
+  const int PIR_PIN     = 33;  // Digital Input (PIR Motion Sensor)
+  const int BUZZER_PIN  = 25;  // PWM Output (Local Alarm)
+  const int GAS_THRESHOLD = 3500;
+#endif
+
+#ifdef DEVICE_TYPE_AUTOMATION
+  const char* NODE_ROLE = "relay";
+  const int RELAY_PINS[4]   = {18, 22, 21, 19}; // Outputs (Relay Channels 1-4)
+  const int CURRENT_PINS[4] = {32, 35, 34, 33}; // Analog Inputs (Current Sensors 1-4)
+
+  // Calibrated Electrical Parameters for True RMS Calculation
+  const float VREF = 3300.0;       // ESP32 ADC reference voltage in mV (3.3V)
+  const float SENSITIVITY = 185.0; // Sensitivity for 5A version = 185mV/A (Use 66 for 30A version)
+  const int ADC_RESOLUTION = 4095; // ESP32 12-bit ADC resolution
+#endif
+
 const int RESET_PIN   = 0;   // Physical BOOT Button
 const int STATUS_LED  = 2;   // Onboard Blue Status LED
 
 // ==========================================
 // THRESHOLDS & LOGIC STATES
 // ==========================================
-const int GAS_THRESHOLD = 3500;
 bool isPaired = false;
 
 // ==========================================
@@ -29,7 +51,7 @@ String meshKey = "";
 String deviceName = "";
 
 unsigned long lastBroadcast = 0;
-const unsigned long broadcastInterval = 250; // Telemetry reports every 2 seconds
+const unsigned long broadcastInterval = 2000; // Telemetry reports every 2 seconds
 unsigned long lastTripSent = 0;
 bool wasEmergency = false;
 int currentChannel = 1;
@@ -99,6 +121,44 @@ void resetPairing() {
     digitalWrite(STATUS_LED, LOW);
 }
 
+#ifdef DEVICE_TYPE_AUTOMATION
+// Function to calculate true RMS AC Current for a specific sensor pin
+float getACCurrent(int sensorPin) {
+  float sampleSum = 0;
+  long sampleCount = 0;
+  unsigned long startTime = millis();
+  
+  // Sample the AC waveform for exactly 20ms (one complete 50Hz cycle)
+  while ((millis() - startTime) < 20) {
+    int rawADC = analogRead(sensorPin);
+    
+    // Convert raw ADC steps to millivolts
+    float voltageMV = ((float)rawADC / ADC_RESOLUTION) * VREF;
+    
+    // Subtract the 2.5V center offset (1515mV after passing through your 1k/2k voltage divider)
+    float zeroOffsetVoltage = voltageMV - 1515.0; 
+    
+    // Square the instantaneous value
+    sampleSum += (zeroOffsetVoltage * zeroOffsetVoltage);
+    sampleCount++;
+  }
+  
+  // Calculate Root Mean Square (RMS) Voltage
+  float rmsVoltage = sqrt(sampleSum / sampleCount);
+  
+  // Calculate RMS Current (Amps = mV / Sensitivity)
+  // Multiply by 1.5 to reverse the reduction from your 1k/2k voltage divider ratio
+  float currentAmps = (rmsVoltage / SENSITIVITY) * 1.5;
+  
+  // Filter out microscopic ambient sensor noise when appliance is idle
+  if (currentAmps < 0.05) {
+    currentAmps = 0.0;
+  }
+  
+  return currentAmps;
+}
+#endif
+
 // Callback when ESP-NOW message is received
 void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* data, int len) {
     char incomingJson[len + 1];
@@ -140,9 +200,24 @@ void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* data, int len)
         return;
     }
 
-    String targetMac = doc["mac"];
+    // Process targeted commands matching this device's credentials or emergency broadcasts
+    String targetMac = doc["mac"] | "";
 
-    // Check if the pairing request is targeted at this node's MAC address
+    // Handle universal safety trips broadcasted by the Kitchen Node
+    #ifdef DEVICE_TYPE_AUTOMATION
+    if (action == "TRIP_RELAY") {
+        String incomingMeshId = doc["mesh_id"] | "";
+        if (isPaired && incomingMeshId == meshId) {
+            Serial.println("🚨 EMERGENCY TRIP RECEIVED FROM MESH SENSOR NODE! SHUTTING DOWN ALL SOCKETS!");
+            for (int i = 0; i < 4; i++) {
+                digitalWrite(RELAY_PINS[i], HIGH); // Pull HIGH to turn relays OFF (Active-LOW)
+            }
+            return;
+        }
+    }
+    #endif
+
+    // Process standard web interface commands targeted specifically at this node's MAC
     if (targetMac.equalsIgnoreCase(getMacAddress())) {
         if (action == "PAIR") {
             String newMeshId = doc["mesh_id"];
@@ -152,31 +227,51 @@ void onDataRecv(const esp_now_recv_info* recvInfo, const uint8_t* data, int len)
         } else if (action == "UNPAIR") {
             resetPairing();
         }
+        #ifdef DEVICE_TYPE_AUTOMATION
+        else if (action == "CONTROL_RELAY") {
+            int channel = doc["channel"];
+            bool state = doc["state"];
+            if (channel >= 1 && channel <= 4) {
+                // Multi-channel relays are Active-LOW (LOW = ON, HIGH = OFF)
+                digitalWrite(RELAY_PINS[channel - 1], state ? LOW : HIGH);
+                Serial.printf("🎯 Relay Channel %d explicitly set over-the-air to: %s\n", channel, state ? "ON" : "OFF");
+            }
+        }
+        #endif
     }
 }
 
 void setup() {
     Serial.begin(115200);
 
+    pinMode(RESET_PIN, INPUT_PULLUP);
+    pinMode(STATUS_LED, OUTPUT);
+    digitalWrite(STATUS_LED, LOW);
+
+    #ifdef DEVICE_TYPE_KITCHEN
     pinMode(FLAME_PIN, INPUT_PULLUP);
     pinMode(GAS_PIN, INPUT);
     pinMode(PIR_PIN, INPUT);
-    pinMode(RESET_PIN, INPUT_PULLUP);
-    pinMode(STATUS_LED, OUTPUT);
-
     ledcAttach(BUZZER_PIN, 2000, 8);
     ledcWrite(BUZZER_PIN, 0);
+    #endif
 
-    digitalWrite(STATUS_LED, LOW);
+    #ifdef DEVICE_TYPE_AUTOMATION
+    for (int i = 0; i < 4; i++) {
+        pinMode(RELAY_PINS[i], OUTPUT);
+        digitalWrite(RELAY_PINS[i], HIGH); // Relays default to OFF (Active-LOW)
+        pinMode(CURRENT_PINS[i], INPUT);
+    }
+    #endif
 
-    // Load NVS config
+    // Load configuration from NVS permanent storage
     loadPairingConfig();
 
-    // Start Wi-Fi in Station mode (needed for ESP-NOW)
+    // Start Wi-Fi in Station mode (required for ESP-NOW radio channels)
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
 
-    // Initialize ESP-NOW
+    // Initialize ESP-NOW Protocol
     if (esp_now_init() != ESP_OK) {
         Serial.println("Error initializing ESP-NOW");
         return;
@@ -184,12 +279,12 @@ void setup() {
 
     esp_now_register_recv_cb(onDataRecv);
     
-    // Register broadcast peer
+    // Register structural broadcast peer
     esp_now_peer_info_t peerInfo;
     memset(&peerInfo, 0, sizeof(peerInfo));
     uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-    peerInfo.channel = 0; // Use current channel
+    peerInfo.channel = 0; // Lock to current environment channel
     peerInfo.encrypt = false;
     if (esp_now_add_peer(&peerInfo) != ESP_OK){
         Serial.println("Failed to add broadcast peer");
@@ -199,7 +294,7 @@ void setup() {
 }
 
 void loop() {
-    // Physical reset check (Hold BOOT button for 5 seconds to unpair)
+    // Physical hardware reset check (Hold BOOT button for 5 seconds to unpair)
     if (digitalRead(RESET_PIN) == LOW) {
         delay(50);
         int holdTime = 0;
@@ -214,12 +309,14 @@ void loop() {
 
     unsigned long now = millis();
 
-    // 1. DISCOVERY MODE (Unpaired)
+    // ==========================================
+    // MODE 1: DISCOVERY CONFIGURATION LAYER (Unpaired)
+    // ==========================================
     if (!isPaired) {
-        // Slow blink status LED to indicate discovery state
+        // Slow flashing indicator status light
         digitalWrite(STATUS_LED, (millis() / 500) % 2);
 
-        // If we haven't seen the Gateway's handshake in 45 seconds, resume hopping
+        // Resume sweeping channels if the handshake beacon drops for 45 seconds
         if (gatewayFound && (now - lastGatewaySeen > 45000)) {
             gatewayFound = false;
             Serial.println("⚠️ Lost Gateway signal. Resuming channel hopping...");
@@ -229,7 +326,7 @@ void loop() {
             lastBroadcast = now;
             
             if (!gatewayFound) {
-                // Cycle through Wi-Fi channels (1 to 13) to find the Gateway
+                // Sweep across local frequencies (Channels 1 to 13) to find Gateway portal
                 currentChannel++;
                 if (currentChannel > 13) currentChannel = 1;
                 esp_wifi_set_channel(currentChannel, WIFI_SECOND_CHAN_NONE);
@@ -238,28 +335,36 @@ void loop() {
                 Serial.println("📡 Locked on Gateway channel: " + String(currentChannel) + ". Broadcasting ping.");
             }
 
-            // Broadcast discovery signal over ESP-NOW to find the Gateway
+            // Fire discovery request frames across the mesh channel
             uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
             char discoPayload[128];
             snprintf(discoPayload, sizeof(discoPayload), 
-                     "{\"action\":\"DISCOVER\",\"mac\":\"%s\",\"role\":\"sensor\"}", 
-                     getMacAddress().c_str());
+                     "{\"action\":\"DISCOVER\",\"mac\":\"%s\",\"role\":\"%s\"}", 
+                     getMacAddress().c_str(), NODE_ROLE);
             
             esp_now_send(broadcastAddress, (uint8_t *) discoPayload, strlen(discoPayload));
         }
         
-        // Silent alarm in discovery mode
-        ledcWrite(BUZZER_PIN, 0);
+        #ifdef DEVICE_TYPE_KITCHEN
+        ledcWrite(BUZZER_PIN, 0); // Keep buzzer silent while pairing
+        #endif
     } 
-    // 2. ACTIVE MESH MODE (Paired)
+    // ==========================================
+    // MODE 2: ACTIVE SECURE TELEMETRY LAYER (Paired)
+    // ==========================================
     else {
-        // Keep status LED solidly ON to indicate active pairing status
-        digitalWrite(STATUS_LED, HIGH);
+        // Maintain solid indicator only if actively catching Gateway heartbeats
+        if (now - lastGatewaySeen <= 15000) {
+            digitalWrite(STATUS_LED, HIGH);
+        } else {
+            // Rapid pulse alert pattern indicates tracking sync loss
+            digitalWrite(STATUS_LED, (millis() / 200) % 2);
+        }
 
-        // Channel recovery logic: if we haven't seen the Gateway's heartbeat in 15 seconds, start hopping
+        // Automatic frequency adjustment if the gateway migrates router channels
         static unsigned long lastChannelHop = 0;
         if (now - lastGatewaySeen > 15000) {
-            if (now - lastChannelHop > 6000) { // Hop every 6 seconds to guarantee catching the Gateway's 5-second heartbeat
+            if (now - lastChannelHop > 6000) { 
                 lastChannelHop = now;
                 currentChannel++;
                 if (currentChannel > 13) currentChannel = 1;
@@ -268,7 +373,8 @@ void loop() {
             }
         }
 
-        // Read physical sensors
+        // --- KITCHEN EXHAUST LOGIC BLOCK ---
+        #ifdef DEVICE_TYPE_KITCHEN
         int flameState = digitalRead(FLAME_PIN); // 0 = Fire, 1 = Safe
         int gasValue = analogRead(GAS_PIN);
         int pirState = digitalRead(PIR_PIN) == HIGH ? 1 : 0;
@@ -282,32 +388,32 @@ void loop() {
             statusText = "GAS_LEAK";
         }
 
-        // Sound local alarm immediately if emergency is detected
+        // Fire physical alarm parameters instantly if hazard bounds break
         if (hasEmergency) {
             if (statusText == "FIRE_EMERGENCY") {
-                ledcWriteNote(BUZZER_PIN, NOTE_C, 6); // Rapid high tone
+                ledcWriteNote(BUZZER_PIN, NOTE_C, 6); // Piercing fire frequency tone
             } else {
-                ledcWriteNote(BUZZER_PIN, NOTE_C, 5); // Pulsing warning tone
+                ledcWriteNote(BUZZER_PIN, NOTE_C, 5); // Pulsing gas hazard tone
             }
             
-            // Send instant TRIP command immediately on transition, or rate-limited every 3 seconds to prevent jamming the mesh network
+            // Broadcast instantaneous TRIP command to force all relays open safely
             if (!wasEmergency || (now - lastTripSent > 3000)) {
                 lastTripSent = now;
                 uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
                 char tripPayload[250];
-                // Cryptographic Mesh verification signature
+                
                 snprintf(tripPayload, sizeof(tripPayload),
                          "{\"action\":\"TRIP_RELAY\",\"mac\":\"%s\",\"mesh_id\":\"%s\",\"signature\":\"%s\",\"status\":\"%s\",\"gas\":%d,\"current\":0,\"pir\":%d,\"flame\":%d}",
                          getMacAddress().c_str(), meshId.c_str(), meshKey.c_str(), statusText.c_str(), gasValue, pirState, flameState);
                 
                 esp_now_send(broadcastAddress, (uint8_t *) tripPayload, strlen(tripPayload));
-                Serial.println("🚨 EMERGENCY SHUTDOWN broadcast sent: " + String(tripPayload));
+                Serial.println("🚨 EMERGENCY SHUTDOWN SENT TO ALL RELAYS: " + String(tripPayload));
             }
         } else {
-            ledcWrite(BUZZER_PIN, 0);
+            ledcWrite(BUZZER_PIN, 0); // Clear physical audio buzzer
         }
 
-        // Send periodic status telemetry to Gateway
+        // Routine background environment sensor reports
         if (now - lastBroadcast > broadcastInterval) {
             lastBroadcast = now;
 
@@ -318,11 +424,38 @@ void loop() {
                      getMacAddress().c_str(), meshId.c_str(), gasValue, pirState, flameState, statusText.c_str());
             
             esp_now_send(broadcastAddress, (uint8_t *) telemetryPayload, strlen(telemetryPayload));
-            Serial.println("Sent telemetry payload over ESP-NOW");
+            Serial.println("Sent kitchen environmental telemetry over ESP-NOW");
         }
 
         wasEmergency = hasEmergency;
+        #endif
+
+        // --- AUTOMATION CURRENT TRANSFORMER BLOCK ---
+        #ifdef DEVICE_TYPE_AUTOMATION
+        // Calculate true Root-Mean-Square (RMS) current drawn from each appliance
+        float c1 = getACCurrent(CURRENT_PINS[0]);
+        float c2 = getACCurrent(CURRENT_PINS[1]);
+        float c3 = getACCurrent(CURRENT_PINS[2]);
+        float c4 = getACCurrent(CURRENT_PINS[3]);
+        
+        float totalCurrentCombined = c1 + c2 + c3 + c4;
+
+        if (now - lastBroadcast > broadcastInterval) {
+            lastBroadcast = now;
+
+            uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+            char telemetryPayload[350];
+            
+            // Package actual calibrated float string telemetry arrays for dashboard processing
+            snprintf(telemetryPayload, sizeof(telemetryPayload),
+                     "{\"action\":\"TELEMETRY\",\"mac\":\"%s\",\"mesh_id\":\"%s\",\"gas\":0,\"current\":%.3f,\"pir\":1,\"flame\":1,\"status\":\"SAFE\",\"c1\":%.3f,\"c2\":%.3f,\"c3\":%.3f,\"c4\":%.3f}",
+                     getMacAddress().c_str(), meshId.c_str(), totalCurrentCombined, c1, c2, c3, c4);
+            
+            esp_now_send(broadcastAddress, (uint8_t *) telemetryPayload, strlen(telemetryPayload));
+            Serial.println("Sent calibrated True-RMS current matrix arrays over ESP-NOW");
+        }
+        #endif
     }
 
-    delay(10);
+    delay(10); // Maintain background processor stability
 }
