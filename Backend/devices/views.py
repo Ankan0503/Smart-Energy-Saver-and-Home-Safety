@@ -271,6 +271,39 @@ def reset_safety(request):
         except Device.DoesNotExist:
             return JsonResponse({"error": "Gateway/Relay device not found or not owned by you."}, status=404)
 
+        # Check safety states
+        from accounts.views import get_or_create_user_profile
+        profile = get_or_create_user_profile(user)
+        
+        from django.utils import timezone
+        from datetime import timedelta
+        from telemetry.models import TelemetryReading
+        from django.db.models import Q
+
+        # Check if currently there is an active emergency in the very latest telemetry
+        latest_reading = TelemetryReading.objects.filter(device__owner=user).order_by('-timestamp').first()
+        if latest_reading:
+            if latest_reading.gas > 3500 or latest_reading.flame == 0:
+                return JsonResponse({"error": "Cannot restore power. Sensors are currently reporting unsafe conditions!"}, status=400)
+
+        if profile.is_security_locked:
+            # Check last 30 seconds of readings
+            cutoff = timezone.now() - timedelta(seconds=30)
+            recent_readings = TelemetryReading.objects.filter(device__owner=user, timestamp__gte=cutoff)
+            
+            if not recent_readings.exists():
+                return JsonResponse({"error": "No recent telemetry data received. Ensure sensors are online before resetting."}, status=400)
+                
+            unsafe_readings = recent_readings.filter(Q(gas__gt=3500) | Q(flame=0))
+            if unsafe_readings.exists():
+                # Get the duration since the last unsafe reading to calculate cooldown remaining
+                last_unsafe = unsafe_readings.order_by('-timestamp').first()
+                elapsed = (timezone.now() - last_unsafe.timestamp).total_seconds()
+                remaining = max(1, int(30 - elapsed))
+                return JsonResponse({
+                    "error": f"Safety buffer active. Please wait {remaining} more seconds for the environment to clear."
+                }, status=400)
+
         # Send RESET_SAFETY command via MQTT
         from paho.mqtt import publish as mqtt_publish
         import os
@@ -310,5 +343,63 @@ def reset_safety(request):
 
         return JsonResponse({"message": "System safety reset command successfully sent to Gateway."})
 
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def toggle_security_lock(request):
+    try:
+        user = get_user_from_jwt_or_fallback(request)
+        if not user:
+            return JsonResponse({"error": "Unauthorized"}, status=401)
+        data = json.loads(request.body)
+        is_locked = data.get("is_locked", True)
+        
+        from accounts.views import get_or_create_user_profile
+        profile = get_or_create_user_profile(user)
+        profile.is_security_locked = is_locked
+        profile.save()
+        
+        # Publish SET_LOCK command via MQTT to gateway
+        from paho.mqtt import publish as mqtt_publish
+        import os
+        
+        MQTT_BROKER = os.getenv("MQTT_BROKER", "broker.hivemq.com")
+        MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
+        MQTT_USER = os.getenv("MQTT_USER")
+        MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
+        
+        auth = None
+        if MQTT_USER and MQTT_PASSWORD:
+            auth = {'username': MQTT_USER, 'password': MQTT_PASSWORD}
+            
+        tls = None
+        if MQTT_PORT == 8883:
+            import ssl
+            tls = {'ca_certs': None, 'cert_reqs': ssl.CERT_NONE, 'tls_version': ssl.PROTOCOL_TLS}
+            
+        lock_payload = {
+            "action": "SET_LOCK",
+            "is_locked": is_locked
+        }
+        
+        try:
+            mqtt_publish.single(
+                "aether/pairing/command",
+                payload=json.dumps(lock_payload),
+                hostname=MQTT_BROKER,
+                port=MQTT_PORT,
+                auth=auth,
+                tls=tls
+            )
+            print(f"Published SET_LOCK: {is_locked} to MQTT")
+        except Exception as mqtt_err:
+            print(f"Failed to publish MQTT lock command: {mqtt_err}")
+            
+        return JsonResponse({
+            "message": f"Mesh security state successfully set to {'LOCKED' if is_locked else 'UNLOCKED'}.",
+            "is_security_locked": is_locked
+        })
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)

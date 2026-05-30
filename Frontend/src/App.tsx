@@ -5,33 +5,33 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Zap, 
-  ShieldAlert, 
-  Cpu, 
-  Activity, 
-  Wind, 
-  Lightbulb, 
-  Power, 
+import {
+  Zap,
+  ShieldAlert,
+  Cpu,
+  Activity,
+  Wind,
+  Lightbulb,
+  Power,
   ChevronRight,
   AlertTriangle,
   Globe,
   Plus,
   X
 } from 'lucide-react';
-import { 
-  AreaChart, 
-  Area, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer 
+import {
+  AreaChart,
+  Area,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer
 } from 'recharts';
 import { cn } from './lib/utils';
-import { 
-  getSmartMacroSuggestions, 
-  getEnergyInsights, 
-  SmartRule, 
-  EnergyInsight 
+import {
+  getSmartMacroSuggestions,
+  getEnergyInsights,
+  SmartRule,
+  EnergyInsight
 } from './services/geminiService';
 
 // Import refactored components
@@ -52,7 +52,7 @@ import { useAudioAlert } from './hooks/useAudioAlert';
 const generateChartData = (range: string = 'Daily') => {
   const points = range === 'Daily' ? 24 : range === 'Weekly' ? 7 : 30;
   return Array.from({ length: points }, (_, i) => ({
-    name: range === 'Daily' ? `${i}:00` : range === 'Weekly' ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i] : `Day ${i+1}`,
+    name: range === 'Daily' ? `${i}:00` : range === 'Weekly' ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i] : `Day ${i + 1}`,
     value: Math.floor(Math.random() * 400) + 100,
     previous: Math.floor(Math.random() * 350) + 150,
   }));
@@ -62,6 +62,10 @@ export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [isEcoMode, setIsEcoMode] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSecurityLocked, setIsSecurityLocked] = useState(() => {
+    const saved = localStorage.getItem('aether_user');
+    return saved ? JSON.parse(saved).is_security_locked ?? true : true;
+  });
   const [isFlame, setIsFlame] = useState(false);
   const [gasLevel, setGasLevel] = useState(120);
   const [showOverlay, setShowOverlay] = useState<null | 'fire' | 'gas'>(null);
@@ -136,11 +140,13 @@ export default function App() {
           setUsername(data.username);
           setMeshId(data.mesh_id);
           setMeshKey(data.mesh_key);
+          setIsSecurityLocked(data.is_security_locked);
           localStorage.setItem('aether_user', JSON.stringify({
             token: t,
             username: data.username,
             mesh_id: data.mesh_id,
-            mesh_key: data.mesh_key
+            mesh_key: data.mesh_key,
+            is_security_locked: data.is_security_locked
           }));
 
           // Fetch user devices to look up the Central Gateway's MAC Address
@@ -175,12 +181,12 @@ export default function App() {
     checkAuth();
   }, []);
   const [zones, setZones] = useState([
-    { 
-      id: 'lr-lights', 
-      name: 'Living Room', 
-      type: 'Lights', 
-      icon: Lightbulb, 
-      active: true, 
+    {
+      id: 'lr-lights',
+      name: 'Living Room',
+      type: 'Lights',
+      icon: Lightbulb,
+      active: true,
       status: 'Active',
       nominalConsumption: 45, // W
       color: 'text-clay',
@@ -191,12 +197,12 @@ export default function App() {
       lastOptimized: '2h ago',
       startTime: Date.now() - 3600000 // 1h ago
     },
-    { 
-      id: 'kitchen-app', 
-      name: 'Kitchen', 
-      type: 'Appliance', 
-      icon: Zap, 
-      active: true, 
+    {
+      id: 'kitchen-app',
+      name: 'Kitchen',
+      type: 'Appliance',
+      icon: Zap,
+      active: true,
       status: 'Active',
       nominalConsumption: 1200, // W
       color: 'text-olive',
@@ -207,12 +213,12 @@ export default function App() {
       lastOptimized: '4h ago',
       startTime: Date.now() - 15735000 // approx 4.3h ago
     },
-    { 
-      id: 'hvac', 
-      name: 'Thermostat', 
-      type: 'HVAC', 
-      icon: Wind, 
-      active: false, 
+    {
+      id: 'hvac',
+      name: 'Thermostat',
+      type: 'HVAC',
+      icon: Wind,
+      active: false,
       status: 'Standby',
       nominalConsumption: 800, // W
       color: 'text-sage',
@@ -223,12 +229,12 @@ export default function App() {
       lastOptimized: 'Just now',
       startTime: null
     },
-    { 
-      id: 'tv-unit', 
-      name: 'Media Unit', 
-      type: 'Samsung TV', 
-      icon: Activity, 
-      active: false, 
+    {
+      id: 'tv-unit',
+      name: 'Media Unit',
+      type: 'Samsung TV',
+      icon: Activity,
+      active: false,
       status: 'Idle',
       nominalConsumption: 150, // W
       color: 'text-ink',
@@ -386,9 +392,9 @@ export default function App() {
           `${zone.name} node ${nextActive ? 'activated' : 'isolated'}`,
           nextActive ? Zap : Power
         );
-        return { 
-          ...zone, 
-          active: nextActive, 
+        return {
+          ...zone,
+          active: nextActive,
           status: nextActive ? 'Active' : (zone.type === 'HVAC' ? 'Standby' : 'Idle'),
           startTime: nextActive ? Date.now() : null
         };
@@ -411,11 +417,11 @@ export default function App() {
         const rawPir = Number(data.pir ?? 1);
         const rawFlame = Number(data.flame ?? 1);
         setLiveTelemetry(data);
-        
+
         // Scale 12-bit ADC value (0-4095) down to UI scale (e.g., 3500 raw -> 350)
         const uiGasLevel = rawGas / 10;
         setGasLevel(uiGasLevel);
-        
+
         // flame == 0 means fire detected (Active-LOW)
         const fireDetected = rawFlame === 0;
         setIsFlame(fireDetected);
@@ -506,6 +512,43 @@ export default function App() {
     const interval = setInterval(fetchTelemetry, 1500);
     return () => clearInterval(interval);
   }, [wasGasLeak, wasFire, token, meshId, gatewayMac]);
+
+  const handleToggleSecurityLock = async (nextLockedState: boolean) => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(`${apiUrl}/api/devices/toggle-lock/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ is_locked: nextLockedState })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsSecurityLocked(data.is_security_locked);
+
+        const saved = localStorage.getItem('aether_user');
+        if (saved) {
+          const userObj = JSON.parse(saved);
+          userObj.is_security_locked = data.is_security_locked;
+          localStorage.setItem('aether_user', JSON.stringify(userObj));
+        }
+
+        addToast(
+          `Mesh security set to ${data.is_security_locked ? 'PROTECTED' : 'UNLOCKED'}`,
+          data.is_security_locked ? ShieldAlert : Globe
+        );
+      } else {
+        const errData = await res.json();
+        addToast(errData.error || "Failed to update security lock state", ShieldAlert);
+      }
+    } catch (err) {
+      console.error("Error toggling security lock:", err);
+      addToast("Network error updating lock state", ShieldAlert);
+    }
+  };
 
   const handleResetSafety = async () => {
     let currentGatewayMac = gatewayMac;
@@ -620,7 +663,7 @@ export default function App() {
                 <p className="text-[10px] font-black uppercase text-ink/30 tracking-widest mb-0.5">Command Dispatched</p>
                 <p className="text-xs font-bold text-ink italic">{toast.message}</p>
               </div>
-              <button 
+              <button
                 onClick={() => removeToast(toast.id)}
                 className="p-1 hover:bg-bg-card rounded-lg text-ink/20 hover:text-ink transition-colors"
                 title="Dismiss"
@@ -631,11 +674,11 @@ export default function App() {
           ))}
         </AnimatePresence>
       </div>
-      <Sidebar 
-        activeView={activeView} 
-        setActiveView={setActiveView} 
-        zonesCount={zones.length} 
-        alertActive={!!showOverlay} 
+      <Sidebar
+        activeView={activeView}
+        setActiveView={setActiveView}
+        zonesCount={zones.length}
+        alertActive={!!showOverlay}
         setZones={setZones}
         addToast={addToast}
         metrics={systemMetrics}
@@ -646,12 +689,12 @@ export default function App() {
         isAuthenticated={isAuthenticated}
         username={username}
       />
-      
+
       <main className="flex-1 p-12 overflow-y-auto">
         <AnimatePresence>
           {showOverlay && (
-            <SafetyAlertOverlay 
-              type={showOverlay} 
+            <SafetyAlertOverlay
+              type={showOverlay}
               onDismiss={() => {
                 setIsMuted(true);
                 setShowOverlay(null);
@@ -659,22 +702,22 @@ export default function App() {
                 setGasLevel(120);
                 addToast("Safety alert acknowledged", ShieldAlert);
               }}
-              message={showOverlay === 'fire' 
+              message={showOverlay === 'fire'
                 ? "IR Sensors detected primary flame source in Zone 4 (Kitchen). Solenoid valve #01 has been locked and kitchen HVAC initialized at max capacity."
                 : `LPG concentration has reached ${gasLevel.toFixed(0)}ppm. This exceeds the 300ppm safety threshold. All secondary electrical nodes have been isolated.`
-              } 
+              }
             />
           )}
 
           {selectedZone && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-ink/20 backdrop-blur-sm"
               onClick={() => setSelectedZone(null)}
             >
-              <motion.div 
+              <motion.div
                 initial={{ scale: 0.95, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 className="max-w-4xl w-full bg-white rounded-[4rem] p-8 md:p-12 shadow-2xl relative border border-olive/10 max-h-[90vh] overflow-y-auto no-scrollbar"
@@ -704,15 +747,15 @@ export default function App() {
                           selectedZone.active ? "text-sage" : "text-ink/30"
                         )}>{selectedZone.status}</p>
                         {selectedZone.active && isEcoMode && (
-                           <>
-                             <span className="w-1 h-1 rounded-full bg-sage/20" />
-                             <p className="text-[10px] font-bold text-sage uppercase tracking-[0.2em]">Efficiency Protocol 01</p>
-                           </>
+                          <>
+                            <span className="w-1 h-1 rounded-full bg-sage/20" />
+                            <p className="text-[10px] font-bold text-sage uppercase tracking-[0.2em]">Efficiency Protocol 01</p>
+                          </>
                         )}
                       </div>
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={() => toggleZone(selectedZone.id)}
                     className={cn(
                       "group relative overflow-hidden px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all",
@@ -721,12 +764,12 @@ export default function App() {
                   >
                     <span className="relative z-10">{selectedZone.active ? 'Isolate Node' : 'Initialize Node'}</span>
                     {selectedZone.active && (
-                       <motion.div 
-                         initial={{ x: '-100%' }}
-                         animate={{ x: '100%' }}
-                         transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
-                         className="absolute inset-0 bg-white/10 skew-x-12"
-                       />
+                      <motion.div
+                        initial={{ x: '-100%' }}
+                        animate={{ x: '100%' }}
+                        transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                        className="absolute inset-0 bg-white/10 skew-x-12"
+                      />
                     )}
                   </button>
                 </div>
@@ -736,7 +779,7 @@ export default function App() {
                     <div className="flex justify-between items-center mb-6">
                       <h4 className="text-[10px] font-black uppercase text-ink/20 tracking-widest">Thermal Load Profile</h4>
                       <div className="flex items-center gap-4">
-                        <button 
+                        <button
                           onClick={() => setIsComparing(!isComparing)}
                           className={cn(
                             "flex items-center gap-2 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest transition-all",
@@ -748,12 +791,12 @@ export default function App() {
                         </button>
                         <div className="flex gap-2 bg-bg-card/50 p-1 rounded-full">
                           {['Daily', 'Weekly', 'Monthly'].map(r => (
-                            <button 
+                            <button
                               key={r}
                               onClick={() => {
-                            setZoneRange(r);
-                            setData(generateChartData(r));
-                          }}
+                                setZoneRange(r);
+                                setData(generateChartData(r));
+                              }}
                               className={cn(
                                 "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest transition-all",
                                 zoneRange === r ? "bg-white text-olive shadow-sm" : "text-ink/30 hover:text-ink"
@@ -770,16 +813,16 @@ export default function App() {
                         <AreaChart data={data}>
                           <defs>
                             <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#2D4C3B" stopOpacity={0.2}/>
-                              <stop offset="95%" stopColor="#2D4C3B" stopOpacity={0}/>
+                              <stop offset="5%" stopColor="#2D4C3B" stopOpacity={0.2} />
+                              <stop offset="95%" stopColor="#2D4C3B" stopOpacity={0} />
                             </linearGradient>
                             <linearGradient id="colorPrev" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#D9D9D9" stopOpacity={0.1}/>
-                              <stop offset="95%" stopColor="#D9D9D9" stopOpacity={0}/>
+                              <stop offset="5%" stopColor="#D9D9D9" stopOpacity={0.1} />
+                              <stop offset="95%" stopColor="#D9D9D9" stopOpacity={0} />
                             </linearGradient>
                           </defs>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#31332908" />
-                          <Tooltip 
+                          <Tooltip
                             content={({ active, payload }) => {
                               if (active && payload && payload.length) {
                                 return (
@@ -801,24 +844,24 @@ export default function App() {
                               return null;
                             }}
                           />
-                          <Area 
-                            type="monotone" 
-                            dataKey="value" 
-                            stroke="#2D4C3B" 
+                          <Area
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#2D4C3B"
                             strokeWidth={3}
-                            fillOpacity={1} 
-                            fill="url(#colorVal)" 
+                            fillOpacity={1}
+                            fill="url(#colorVal)"
                             animationDuration={1500}
                           />
                           {isComparing && (
-                            <Area 
-                              type="monotone" 
-                              dataKey="previous" 
-                              stroke="#D9D9D9" 
+                            <Area
+                              type="monotone"
+                              dataKey="previous"
+                              stroke="#D9D9D9"
                               strokeWidth={2}
                               strokeDasharray="5 5"
-                              fillOpacity={1} 
-                              fill="url(#colorPrev)" 
+                              fillOpacity={1}
+                              fill="url(#colorPrev)"
                               animationDuration={1500}
                             />
                           )}
@@ -842,19 +885,19 @@ export default function App() {
 
                   <div className="space-y-8 border-t lg:border-t-0 lg:border-l border-olive/5 pt-12 lg:pt-0 lg:pl-12">
                     <div className="space-y-6">
-                       <div className="flex justify-between items-center">
-                          <h4 className="text-[10px] font-black uppercase text-ink/20 tracking-widest">Applied Logic Rules</h4>
-                        <button 
+                      <div className="flex justify-between items-center">
+                        <h4 className="text-[10px] font-black uppercase text-ink/20 tracking-widest">Applied Logic Rules</h4>
+                        <button
                           onClick={() => setShowRuleBuilder(!showRuleBuilder)}
                           className="p-2 rounded-xl bg-bg-card hover:bg-olive hover:text-white transition-all text-ink/40"
                         >
                           {showRuleBuilder ? <X size={14} /> : <Plus size={14} />}
                         </button>
                       </div>
-                     
+
                       <AnimatePresence>
                         {showRuleBuilder && (
-                          <motion.div 
+                          <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
@@ -865,7 +908,7 @@ export default function App() {
                                 <label className="text-[8px] font-black uppercase text-ink/30 mb-2 block tracking-widest">When</label>
                                 <div className="flex flex-wrap gap-2 justify-center">
                                   {['Time', 'Motion', 'Temp'].map(c => (
-                                    <button 
+                                    <button
                                       key={c}
                                       onClick={() => setNewRule({ ...newRule, condition: c })}
                                       className={cn(
@@ -882,7 +925,7 @@ export default function App() {
                                 <label className="text-[8px] font-black uppercase text-ink/30 mb-2 block tracking-widest">Action</label>
                                 <div className="flex flex-wrap gap-2 justify-center">
                                   {['On', 'Off', 'Dim'].map(a => (
-                                    <button 
+                                    <button
                                       key={a}
                                       onClick={() => setNewRule({ ...newRule, action: a })}
                                       className={cn(
@@ -896,8 +939,8 @@ export default function App() {
                                 </div>
                               </div>
                             </div>
-                            
-                            <button 
+
+                            <button
                               onClick={addAutomationRule}
                               className="w-full py-3 bg-ink text-white rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all hover:bg-olive"
                             >
@@ -914,7 +957,7 @@ export default function App() {
                               <div className={cn("w-1.5 h-1.5 rounded-full transition-colors", rule.active ? "bg-sage" : "bg-ink/10")} />
                               {rule.text}
                             </div>
-                            <button 
+                            <button
                               onClick={() => {
                                 const updatedRules = selectedZone.rules.filter((_: any, idx: number) => idx !== i);
                                 setZones(prev => prev.map(z => z.id === selectedZone.id ? { ...z, rules: updatedRules } : z));
@@ -938,14 +981,16 @@ export default function App() {
 
         <AnimatePresence mode="wait">
           {activeView === 'dashboard' && (
-            <DashboardView 
-              data={data} 
-              metrics={systemMetrics} 
-              zones={zones} 
+            <DashboardView
+              data={data}
+              metrics={systemMetrics}
+              zones={zones}
               onZoneSelect={(zone) => {
                 setSelectedZone(zone);
                 setActiveView('zones');
               }}
+              isSecurityLocked={isSecurityLocked}
+              setIsSecurityLocked={handleToggleSecurityLock}
               onGoToSafety={() => setActiveView('safety')}
               liveTelemetry={liveTelemetry}
               sensorData={sensorData}
@@ -957,7 +1002,7 @@ export default function App() {
           )}
 
           {activeView === 'zones' && (
-            <motion.div 
+            <motion.div
               key="zones"
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -969,7 +1014,7 @@ export default function App() {
                 <p className="text-[10px] text-ink/30 font-black uppercase tracking-[0.3em] mb-10">Spatial load mapping across the mesh</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {zones.map((zone) => (
-                    <div 
+                    <div
                       key={zone.id}
                       onClick={() => setSelectedZone(zone)}
                       className={cn(
@@ -978,36 +1023,36 @@ export default function App() {
                       )}
                     >
                       <div className="flex justify-between items-start">
-                          <div className={cn("p-5 rounded-2xl bg-bg-card/50 shadow-sm transition-transform group-hover:scale-110", zone.active ? zone.color : "text-ink/20")}>
-                            <zone.icon size={28} />
-                          </div>
-                          <div 
-                            onClick={(e) => toggleZone(zone.id, e)}
-                            className={cn(
-                              "w-12 h-6 rounded-full flex items-center px-1 transition-colors",
-                              zone.active ? "bg-olive/10" : "bg-ink/5"
-                            )}
-                          >
-                            <motion.div 
-                              animate={{ x: zone.active ? 24 : 0 }}
-                              className={cn("w-4 h-4 rounded-full shadow-md", zone.active ? "bg-olive" : "bg-ink/20")} 
-                            />
-                          </div>
+                        <div className={cn("p-5 rounded-2xl bg-bg-card/50 shadow-sm transition-transform group-hover:scale-110", zone.active ? zone.color : "text-ink/20")}>
+                          <zone.icon size={28} />
+                        </div>
+                        <div
+                          onClick={(e) => toggleZone(zone.id, e)}
+                          className={cn(
+                            "w-12 h-6 rounded-full flex items-center px-1 transition-colors",
+                            zone.active ? "bg-olive/10" : "bg-ink/5"
+                          )}
+                        >
+                          <motion.div
+                            animate={{ x: zone.active ? 24 : 0 }}
+                            className={cn("w-4 h-4 rounded-full shadow-md", zone.active ? "bg-olive" : "bg-ink/20")}
+                          />
+                        </div>
                       </div>
-                      
+
                       <div>
-                          <div className="text-[10px] text-ink/50 font-black tracking-[0.2em] uppercase flex items-center gap-2 mb-1">
-                            {zone.name}
-                            <span className={cn(
-                              "w-1.5 h-1.5 rounded-full",
-                              zone.status === 'Active' ? "bg-sage animate-pulse" : 
+                        <div className="text-[10px] text-ink/50 font-black tracking-[0.2em] uppercase flex items-center gap-2 mb-1">
+                          {zone.name}
+                          <span className={cn(
+                            "w-1.5 h-1.5 rounded-full",
+                            zone.status === 'Active' ? "bg-sage animate-pulse" :
                               zone.status === 'Standby' ? "bg-clay" : "bg-ink/10"
-                            )} />
-                          </div>
-                          <div className="text-2xl font-display font-medium text-ink flex items-baseline gap-2">
-                            {zone.active ? `${zone.nominalConsumption}W` : zone.status}
-                            <span className="text-[10px] text-ink/30 font-black uppercase tracking-widest">{zone.type}</span>
-                          </div>
+                          )} />
+                        </div>
+                        <div className="text-2xl font-display font-medium text-ink flex items-baseline gap-2">
+                          {zone.active ? `${zone.nominalConsumption}W` : zone.status}
+                          <span className="text-[10px] text-ink/30 font-black uppercase tracking-widest">{zone.type}</span>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1017,10 +1062,10 @@ export default function App() {
           )}
 
           {activeView === 'analytics' && (
-            <AnalyticsView 
-              data={data} 
-              zones={zones} 
-              metrics={systemMetrics} 
+            <AnalyticsView
+              data={data}
+              zones={zones}
+              metrics={systemMetrics}
               activeRange={analyticsRange}
               onRangeChange={(range) => {
                 setAnalyticsRange(range);
@@ -1034,10 +1079,10 @@ export default function App() {
           )}
 
           {activeView === 'automation' && (
-            <AutomationView 
-              zones={zones} 
-              addToast={addToast} 
-              onToggleRule={toggleRule} 
+            <AutomationView
+              zones={zones}
+              addToast={addToast}
+              onToggleRule={toggleRule}
               onNewMacro={() => {
                 setSelectedZone(zones[0]);
                 setShowRuleBuilder(true);
@@ -1065,12 +1110,14 @@ export default function App() {
           )}
 
           {activeView === 'safety' && (
-            <SafetyHubView 
-              gasLevel={gasLevel} 
-              isFlame={isFlame} 
+            <SafetyHubView
+              gasLevel={gasLevel}
+              isFlame={isFlame}
               systemStatus={systemStatus}
               onResetSafety={handleResetSafety}
               resetCompleted={resetCompleted}
+              isSecurityLocked={isSecurityLocked}
+              setIsSecurityLocked={handleToggleSecurityLock}
             />
           )}
 
@@ -1079,7 +1126,7 @@ export default function App() {
           )}
 
           {activeView === 'settings' && (
-            <SettingsView 
+            <SettingsView
               isAuthenticated={isAuthenticated}
               setIsAuthenticated={setIsAuthenticated}
               username={username}

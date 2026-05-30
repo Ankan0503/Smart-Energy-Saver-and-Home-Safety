@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Flame, Wind, Power } from 'lucide-react';
+import { Flame, Wind, Power, ShieldAlert, Globe } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface SafetyHubViewProps {
@@ -9,9 +9,19 @@ interface SafetyHubViewProps {
   systemStatus: string;
   onResetSafety: () => void;
   resetCompleted: boolean;
+  isSecurityLocked: boolean;
+  setIsSecurityLocked: (v: boolean) => void;
 }
 
-export const SafetyHubView = ({ gasLevel, isFlame, systemStatus, onResetSafety, resetCompleted }: SafetyHubViewProps) => (
+export const SafetyHubView = ({ 
+  gasLevel, 
+  isFlame, 
+  systemStatus, 
+  onResetSafety, 
+  resetCompleted,
+  isSecurityLocked,
+  setIsSecurityLocked
+}: SafetyHubViewProps) => (
   <div className="space-y-10 pb-20">
     {systemStatus !== "SAFE" && !resetCompleted && (
       <motion.div
@@ -45,9 +55,9 @@ export const SafetyHubView = ({ gasLevel, isFlame, systemStatus, onResetSafety, 
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="grid grid-cols-1 lg:grid-cols-2 gap-10"
+      className="grid grid-cols-1 lg:grid-cols-3 gap-10"
     >
-      <div className={cn("p-12 rounded-[4rem] border-2 transition-all duration-700", isFlame ? "border-danger bg-danger/5 shadow-2xl shadow-danger/20" : "bg-white border-olive/5 shadow-sm")}>
+      <div className={cn("p-12 rounded-[4rem] border-2 transition-all duration-700 bg-white border-olive/5 shadow-sm", isFlame && "border-danger bg-danger/5 shadow-2xl shadow-danger/20")}>
         <div className="flex justify-between items-start mb-12">
           <div className="flex items-center gap-6">
             <div className={cn("p-8 rounded-[2.5rem] soft-shadow transition-transform", isFlame ? "bg-danger text-white scale-110" : "bg-bg-card text-ink/30")}>
@@ -84,6 +94,42 @@ export const SafetyHubView = ({ gasLevel, isFlame, systemStatus, onResetSafety, 
             <motion.div animate={{ width: `${(gasLevel / 450) * 100}%` }} className={cn("h-full relative z-10 transition-colors", gasLevel > 300 ? "bg-clay" : "bg-sage")} />
           </div>
           <p className="text-xs text-ink/40 leading-relaxed font-medium">Monitoring Methane, LPG, and Smoke particles across Zone 1-12 metadata clusters.</p>
+        </div>
+      </div>
+
+      <div className="p-12 rounded-[4rem] bg-olive text-white shadow-2xl shadow-olive/20 relative overflow-hidden flex flex-col min-h-[300px]">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 blur-3xl rounded-full translate-x-1/2 -translate-y-1/2" />
+        <ShieldAlert size={140} className="absolute -bottom-10 -right-10 opacity-5" />
+        
+        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-12 opacity-60">System Security</h4>
+        <div className="text-4xl font-display font-medium mb-4 italic leading-[1.1]">Mesh <br /> {isSecurityLocked ? 'Protected' : 'Unlocked'}.</div>
+        <p className="text-[11px] opacity-60 mb-10 font-medium italic leading-relaxed">
+          {isSecurityLocked 
+            ? 'Active safety interlocks engaged. Relay power cutoff will trip instantly upon detecting hazards.' 
+            : 'Safety interlocks bypassed. Warning system is active, but automatic power shutdown is disabled.'}
+        </p>
+        
+        <div className="mt-auto">
+          <div 
+            onClick={() => setIsSecurityLocked(!isSecurityLocked)}
+            className="p-5 bg-white/10 rounded-[2rem] border border-white/10 backdrop-blur-sm flex items-center justify-between cursor-pointer group"
+          >
+            <div className="flex items-center gap-4">
+              <div className="p-2 bg-sage/20 rounded-xl transition-colors group-hover:bg-sage/40">
+                <Globe size={14} />
+              </div>
+              <span className="text-[10px] font-bold uppercase tracking-widest">Global Lock</span>
+            </div>
+            <div className={cn(
+              "w-10 h-6 rounded-full relative p-1 transition-colors duration-300",
+              isSecurityLocked ? "bg-sage" : "bg-white/20"
+            )}>
+              <motion.div 
+                animate={{ x: isSecurityLocked ? 16 : 0 }}
+                className="w-4 h-4 bg-white rounded-full shadow-sm" 
+              />
+            </div>
+          </div>
         </div>
       </div>
     </motion.div>

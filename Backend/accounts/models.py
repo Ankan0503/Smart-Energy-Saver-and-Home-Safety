@@ -9,6 +9,7 @@ class Profile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     mesh_id = models.CharField(max_length=64, unique=True)
     mesh_key = models.CharField(max_length=64)
+    is_security_locked = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

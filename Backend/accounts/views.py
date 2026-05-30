@@ -9,6 +9,17 @@ from django.views.decorators.http import require_http_methods
 from .models import Profile
 from .jwt_utils import encode_jwt, decode_jwt
 
+# Programmatic migration run
+try:
+    from django.core.management import call_command
+    print("Running programmatic migrations for accounts...")
+    call_command('makemigrations', 'accounts', '--noinput')
+    call_command('migrate', 'accounts', '--noinput')
+    print("Programmatic migrations finished successfully!")
+except Exception as migration_err:
+    print("Error during programmatic migration run:", migration_err)
+
+
 def get_or_create_user_profile(user):
     profile, created = Profile.objects.get_or_create(
         user=user,
@@ -58,7 +69,8 @@ def signup_view(request):
             "token": token,
             "username": user.username,
             "mesh_id": profile.mesh_id,
-            "mesh_key": profile.mesh_key
+            "mesh_key": profile.mesh_key,
+            "is_security_locked": profile.is_security_locked
         }, status=201)
 
     except Exception as e:
@@ -85,7 +97,8 @@ def login_view(request):
                 "token": token,
                 "username": user.username,
                 "mesh_id": profile.mesh_id,
-                "mesh_key": profile.mesh_key
+                "mesh_key": profile.mesh_key,
+                "is_security_locked": profile.is_security_locked
             })
         else:
             return JsonResponse({"error": "Invalid credentials."}, status=401)
@@ -108,6 +121,7 @@ def me_view(request):
             "authenticated": True,
             "username": user.username,
             "mesh_id": profile.mesh_id,
-            "mesh_key": profile.mesh_key
+            "mesh_key": profile.mesh_key,
+            "is_security_locked": profile.is_security_locked
         })
     return JsonResponse({"authenticated": False, "error": "Not authenticated"}, status=401)

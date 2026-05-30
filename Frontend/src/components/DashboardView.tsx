@@ -49,6 +49,8 @@ interface DashboardViewProps {
     anomaly: string;
     recommendations: string;
   };
+  isSecurityLocked?: boolean;
+  setIsSecurityLocked?: (v: boolean) => void;
 }
 
 export const DashboardView = ({ 
@@ -62,7 +64,9 @@ export const DashboardView = ({
   hazardRisk,
   anomalyResult,
   energyRecommendations,
-  apiStatus
+  apiStatus,
+  isSecurityLocked,
+  setIsSecurityLocked
 }: DashboardViewProps) => {
   const riskScore = Number(hazardRisk?.risk_score ?? 0);
   const riskCritical = riskScore >= 75;
