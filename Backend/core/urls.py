@@ -25,4 +25,5 @@ urlpatterns = [
     path('api/anomaly/', include('anomaly.urls')),
     path('api/recommendations/', include('recommendations.urls')),
     path('api/hazards/', include('hazards.urls')),
+    path('api/notifications/', include('notifications.urls')),
 ]

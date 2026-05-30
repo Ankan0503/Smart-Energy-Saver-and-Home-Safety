@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'anomaly.apps.AnomalyConfig',
     'recommendations.apps.RecommendationsConfig',
     'hazards.apps.HazardsConfig',
+    'notifications.apps.NotificationsConfig',
 ]
 
 MIDDLEWARE = [
@@ -120,3 +121,9 @@ HAZARD_FIRE_RISK_SCORE = int(os.getenv('HAZARD_FIRE_RISK_SCORE', 95))
 HAZARD_BUZZER_SCORE = int(os.getenv('HAZARD_BUZZER_SCORE', 55))
 HAZARD_SOLENOID_SCORE = int(os.getenv('HAZARD_SOLENOID_SCORE', 75))
 HAZARD_NOTIFICATION_SCORE = int(os.getenv('HAZARD_NOTIFICATION_SCORE', 35))
+
+# Browser Web Push configuration. Generate these with:
+# python manage.py generate_vapid_keys
+WEBPUSH_VAPID_PUBLIC_KEY = os.getenv('WEBPUSH_VAPID_PUBLIC_KEY', '')
+WEBPUSH_VAPID_PRIVATE_KEY = os.getenv('WEBPUSH_VAPID_PRIVATE_KEY', '')
+WEBPUSH_VAPID_SUBJECT = os.getenv('WEBPUSH_VAPID_SUBJECT', 'mailto:admin@example.com')
