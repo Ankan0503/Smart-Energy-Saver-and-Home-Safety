@@ -59,3 +59,19 @@ class TelemetryConfig(AppConfig):
             except Exception as e:
                 print(f"ℹ️ power_watts column check skip: {e}")
 
+            # 7. Dynamically add c1, c2, c3, c4 columns if they don't exist
+            for col in ['c1', 'c2', 'c3', 'c4']:
+                try:
+                    cursor.execute(f"ALTER TABLE telemetry_telemetryreading ADD COLUMN {col} double precision DEFAULT 0.0;")
+                    print(f"✅ Successfully added column {col} to telemetry_telemetryreading!")
+                except Exception as e:
+                    pass
+
+            # 8. Dynamically add appliance_id column if it doesn't exist
+            try:
+                cursor.execute("ALTER TABLE telemetry_telemetryreading ADD COLUMN appliance_id integer;")
+                print("✅ Successfully added column appliance_id to telemetry_telemetryreading!")
+            except Exception as e:
+                pass
+
+

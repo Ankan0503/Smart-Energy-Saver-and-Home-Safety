@@ -49,26 +49,91 @@ def on_message(client, userdata, msg):
             flame = data.get("flame", 1)
             status = data.get("status", "SAFE")
             
+            c1 = float(data.get("c1", 0.0))
+            c2 = float(data.get("c2", 0.0))
+            c3 = float(data.get("c3", 0.0))
+            c4 = float(data.get("c4", 0.0))
+            
             device = None
             if mac:
+                role = "sensor"
+                name = "Sensor Node"
+                if "c1" in data or "c2" in data or "c3" in data or "c4" in data or mac == "70:4B:CA:27:78:84":
+                    role = "relay"
+                    name = "ESP32 Relay Node"
+
                 device, created = Device.objects.get_or_create(
                     mac_address=mac,
                     defaults={
-                        "name": "Unassigned Sensor Node",
-                        "role": "sensor",
+                        "name": f"Unassigned {name}",
+                        "role": role,
                         "is_paired": False
                     }
                 )
+
+                if device.role != role:
+                    device.role = role
+                    device.name = f"Unassigned {name}"
+                
                 device.save() # Auto-updates last_seen
+
+                # Auto-create 4 default appliance channels for relay nodes if missing
+                if device.role == 'relay':
+                    from devices.models import Appliance
+                    default_names = ["Living Room Lights", "Smart Charger", "Thermostat", "Media Unit"]
+                    default_types = ["Lights", "Appliance", "HVAC", "Samsung TV"]
+                    default_consumptions = [45, 1200, 800, 150]
+                    for ch in range(1, 5):
+                        Appliance.objects.get_or_create(
+                            device=device,
+                            channel=ch,
+                            defaults={
+                                "name": default_names[ch - 1],
+                                "type": default_types[ch - 1],
+                                "nominal_consumption": default_consumptions[ch - 1]
+                            }
+                        )
             
+            # 1. Save the overall/combined device telemetry reading
             TelemetryReading.objects.create(
                 device_id=str(device.id) if device else None,
+                appliance_id=None,
                 gas=gas,
-                current=current,
+                current=current, # Combined/total current
                 pir=pir,
                 flame=flame,
-                status=status
+                status=status,
+                c1=c1,
+                c2=c2,
+                c3=c3,
+                c4=c4
             )
+
+            # 2. Save individual telemetry readings for each appliance on the relay node
+            if device and device.role == 'relay':
+                from devices.models import Appliance
+                appliances = Appliance.objects.filter(device=device)
+                channel_currents = {
+                    1: c1,
+                    2: c2,
+                    3: c3,
+                    4: c4
+                }
+                for app in appliances:
+                    app_current = channel_currents.get(app.channel, 0.0)
+                    TelemetryReading.objects.create(
+                        device_id=str(device.id),
+                        appliance_id=app.id,
+                        gas=gas,
+                        current=int(app_current), # Save the individual channel current here
+                        pir=pir,
+                        flame=flame,
+                        status=status,
+                        c1=c1,
+                        c2=c2,
+                        c3=c3,
+                        c4=c4
+                    )
             print(f"Saved Telemetry from {mac or 'legacy'}: {data}")
             
     except Exception as e:
