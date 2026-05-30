@@ -256,7 +256,10 @@ def unregister_device(request):
             # Delete associated telemetry readings manually first
             from telemetry.models import TelemetryReading
             device_ids_str = [str(d.id) for d in devices_to_delete]
-            TelemetryReading.objects.filter(device_id__in=device_ids_str).delete()
+            device_macs = [d.mac_address for d in devices_to_delete]
+            TelemetryReading.objects.filter(
+                Q(device_ref__in=devices_to_delete) | Q(device_id__in=device_ids_str + device_macs)
+            ).delete()
 
             # Delete all user's devices from the database
             del_res = devices_to_delete.delete()
@@ -284,7 +287,9 @@ def unregister_device(request):
             
             # Delete associated telemetry readings manually first
             from telemetry.models import TelemetryReading
-            TelemetryReading.objects.filter(device_id=str(device.id)).delete()
+            TelemetryReading.objects.filter(
+                Q(device_ref=device) | Q(device_id__in=[str(device.id), device.mac_address])
+            ).delete()
 
             # Delete specific device from the database
             device.delete()
@@ -321,15 +326,13 @@ def reset_safety(request):
         from telemetry.models import TelemetryReading
         from django.db.models import Q
 
-        # Check if currently there is an active emergency in the very latest telemetry
-<<<<<<< Updated upstream
-        from .models import Device
-        user_device_ids = [str(d.id) for d in Device.objects.filter(owner=user)]
-        
-        latest_reading = TelemetryReading.objects.filter(device_id__in=user_device_ids).order_by('-timestamp').first()
-=======
-        latest_reading = TelemetryReading.objects.filter(device_ref__owner=user).order_by('-timestamp').first()
->>>>>>> Stashed changes
+        # Check if currently there is an active emergency in the very latest telemetry.
+        user_devices = Device.objects.filter(owner=user)
+        legacy_ids = [str(d.id) for d in user_devices]
+        mac_ids = [d.mac_address for d in user_devices]
+        latest_reading = TelemetryReading.objects.filter(
+            Q(device_ref__in=user_devices) | Q(device_id__in=legacy_ids + mac_ids)
+        ).order_by('-timestamp').first()
         if latest_reading:
             if latest_reading.gas > 3500 or latest_reading.flame == 0:
                 return JsonResponse({"error": "Cannot restore power. Sensors are currently reporting unsafe conditions!"}, status=400)
@@ -337,11 +340,10 @@ def reset_safety(request):
         if profile.is_security_locked:
             # Check last 30 seconds of readings
             cutoff = timezone.now() - timedelta(seconds=30)
-<<<<<<< Updated upstream
-            recent_readings = TelemetryReading.objects.filter(device_id__in=user_device_ids, timestamp__gte=cutoff)
-=======
-            recent_readings = TelemetryReading.objects.filter(device_ref__owner=user, timestamp__gte=cutoff)
->>>>>>> Stashed changes
+            recent_readings = TelemetryReading.objects.filter(
+                Q(device_ref__in=user_devices) | Q(device_id__in=legacy_ids + mac_ids),
+                timestamp__gte=cutoff,
+            )
             
             if not recent_readings.exists():
                 return JsonResponse({"error": "No recent telemetry data received. Ensure sensors are online before resetting."}, status=400)

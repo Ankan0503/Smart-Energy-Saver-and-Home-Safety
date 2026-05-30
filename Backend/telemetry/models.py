@@ -2,12 +2,8 @@ from django.db import models
 from devices.models import Device
 
 class TelemetryReading(models.Model):
-<<<<<<< Updated upstream
-    device_id = models.CharField(max_length=50, null=True, blank=True, db_column='device_id')
-=======
     device_ref = models.ForeignKey(Device, on_delete=models.CASCADE, null=True, blank=True, related_name='readings')
     device_id = models.CharField(max_length=64)
->>>>>>> Stashed changes
     gas = models.IntegerField()
     current = models.FloatField()
     power = models.FloatField(default=0.0)
@@ -19,11 +15,12 @@ class TelemetryReading(models.Model):
     @property
     def device(self):
         if not hasattr(self, '_device_cache'):
-            from devices.models import Device
-            try:
-                self._device_cache = Device.objects.get(id=int(self.device_id)) if self.device_id else None
-            except (Device.DoesNotExist, ValueError):
-                self._device_cache = None
+            self._device_cache = self.device_ref
+            if self._device_cache is None and self.device_id:
+                try:
+                    self._device_cache = Device.objects.get(mac_address=self.device_id)
+                except Device.DoesNotExist:
+                    self._device_cache = None
         return self._device_cache
 
     def __str__(self):

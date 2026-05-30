@@ -42,39 +42,10 @@ def on_message(client, userdata, msg):
                 print(f"Discovered unlinked device: {mac} (Role: {role})")
                 
         elif msg.topic == "aether/telemetry":
-<<<<<<< Updated upstream
-            mac = data.get("mac")
-            gas = data.get("gas", 0)
-            current = data.get("current", 0)
-            pir = 1 if int(data.get("pir", 1)) else 0
-            flame = data.get("flame", 1)
-            status = data.get("status", "SAFE")
-            
-            device = None
-            if mac:
-                device, created = Device.objects.get_or_create(
-                    mac_address=mac,
-                    defaults={
-                        "name": "Unassigned Sensor Node",
-                        "role": "sensor",
-                        "is_paired": False
-                    }
-                )
-                device.save() # Auto-updates last_seen
-            
-            TelemetryReading.objects.create(
-                device_id=str(device.id) if device else None,
-                gas=gas,
-                current=current,
-                pir=pir,
-                flame=flame,
-                status=status
-=======
             reading, prediction = ingest_telemetry_payload(data)
             print(
                 f"Saved Telemetry from {reading.device_id}: current={reading.current}A "
                 f"power={reading.power}W state={prediction.predicted_state if prediction else 'N/A'}"
->>>>>>> Stashed changes
             )
             
     except Exception as e:

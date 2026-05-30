@@ -1,4 +1,5 @@
 from django.http import JsonResponse
+from django.db.models import Q
 from .models import TelemetryReading
 
 def get_latest_telemetry(request):
@@ -41,13 +42,10 @@ def get_latest_telemetry(request):
         latest_readings = []
         for dev in user_devices:
             try:
-<<<<<<< Updated upstream
-                # Find the latest reading for each paired device (using string comparison for device_id)
-                r = TelemetryReading.objects.filter(device_id=str(dev.id)).latest('id')
-=======
-                # Find the latest reading for each paired device
-                r = TelemetryReading.objects.filter(device_ref=dev).latest('id')
->>>>>>> Stashed changes
+                # Prefer the device FK, but include legacy id/mac rows.
+                r = TelemetryReading.objects.filter(
+                    Q(device_ref=dev) | Q(device_id=dev.mac_address) | Q(device_id=str(dev.id))
+                ).latest('id')
                 
                 # Only consider it active if seen in the last 15 seconds
                 from django.utils import timezone
@@ -59,12 +57,11 @@ def get_latest_telemetry(request):
         if not latest_readings:
             # Fallback to the absolute latest reading if no active ones in the last 15 seconds
             try:
-<<<<<<< Updated upstream
-                device_ids = [str(d.id) for d in user_devices]
-                latest = TelemetryReading.objects.filter(device_id__in=device_ids).latest('id')
-=======
-                latest = TelemetryReading.objects.filter(device_ref__in=user_devices).latest('id')
->>>>>>> Stashed changes
+                legacy_ids = [str(d.id) for d in user_devices]
+                mac_ids = [d.mac_address for d in user_devices]
+                latest = TelemetryReading.objects.filter(
+                    Q(device_ref__in=user_devices) | Q(device_id__in=legacy_ids) | Q(device_id__in=mac_ids)
+                ).latest('id')
                 latest_readings = [latest]
             except TelemetryReading.DoesNotExist:
                 return JsonResponse({
