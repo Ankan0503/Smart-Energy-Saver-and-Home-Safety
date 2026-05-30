@@ -47,15 +47,56 @@ class Command(BaseCommand):
     help = 'Train the RandomForest appliance state classifier from telemetry history.'
 
     def add_arguments(self, parser):
-        parser.add_argument('--days', type=int, default=60)
+        window_group = parser.add_mutually_exclusive_group()
+        window_group.add_argument('--days', type=int, default=None)
+        window_group.add_argument('--hours', type=int, default=None)
+        window_group.add_argument('--minutes', type=int, default=None)
         parser.add_argument('--output', default=None)
         parser.add_argument('--min-rows', type=int, default=None)
+        parser.add_argument(
+            '--latest-available',
+            action='store_true',
+            help='Anchor the training window at the newest telemetry row instead of the current time.',
+        )
 
     def handle(self, *args, **options):
-        days = max(1, int(options['days']))
+        days = options['days']
+        hours = options['hours']
+        minutes = options['minutes']
+        if days is not None and days <= 0:
+            raise CommandError('--days must be greater than 0.')
+        if hours is not None and hours <= 0:
+            raise CommandError('--hours must be greater than 0.')
+        if minutes is not None and minutes <= 0:
+            raise CommandError('--minutes must be greater than 0.')
+
+        if minutes is not None:
+            training_window = timedelta(minutes=minutes)
+            window_label = f'{minutes} minute(s)'
+        elif hours is not None:
+            training_window = timedelta(hours=hours)
+            window_label = f'{hours} hour(s)'
+        else:
+            days = days or 60
+            training_window = timedelta(days=days)
+            window_label = f'{days} day(s)'
+
         min_rows = int(options['min_rows'] or getattr(settings, 'APPLIANCE_MODEL_MIN_ROWS', 50))
-        since = timezone.now() - timedelta(days=days)
-        queryset = TelemetryReading.objects.filter(timestamp__gte=since).order_by('timestamp')
+        if options['latest_available']:
+            latest_reading = TelemetryReading.objects.order_by('-timestamp').first()
+            if latest_reading is None:
+                raise CommandError('No telemetry readings are available for training.')
+            window_end = latest_reading.timestamp
+            anchor_label = f'ending at latest telemetry row ({window_end.isoformat()})'
+        else:
+            window_end = timezone.now()
+            anchor_label = f'ending now ({window_end.isoformat()})'
+
+        since = window_end - training_window
+        queryset = TelemetryReading.objects.filter(
+            timestamp__gte=since,
+            timestamp__lte=window_end,
+        ).order_by('timestamp')
 
         rows = []
         for reading in queryset.iterator():
@@ -124,12 +165,15 @@ class Command(BaseCommand):
             'model_version': f"rf-{timezone.now().strftime('%Y%m%d%H%M%S')}",
             'trained_at': timezone.now().isoformat(),
             'training_rows': int(len(frame)),
-            'training_days': days,
+            'training_window': window_label,
             'label_counts': frame['label'].value_counts().to_dict(),
             'classification_report': report,
         }
         joblib.dump(bundle, output)
         clear_appliance_model_cache()
 
-        self.stdout.write(self.style.SUCCESS(f'Trained appliance state model: {output}'))
+        self.stdout.write(self.style.SUCCESS(
+            f'Trained appliance state model: {output} from {len(frame)} telemetry rows '
+            f'collected over the last {window_label}, {anchor_label}.'
+        ))
         self.stdout.write(f"Rows: {len(frame)} Labels: {bundle['label_counts']}")
