@@ -101,6 +101,16 @@ ANOMALY_MODEL_PATH = os.getenv(
 )
 ANOMALY_DEFAULT_VOLTAGE = float(os.getenv('ANOMALY_DEFAULT_VOLTAGE', 230.0))
 PHANTOM_BASELINE_CURRENT = float(os.getenv('PHANTOM_BASELINE_CURRENT', 0.0))
+APPLIANCE_STATE_MODEL_PATH = os.getenv(
+    'APPLIANCE_STATE_MODEL_PATH',
+    str(BASE_DIR / 'anomaly' / 'models' / 'appliance_state_rf.joblib'),
+)
+APPLIANCE_MODEL_MIN_ROWS = int(os.getenv('APPLIANCE_MODEL_MIN_ROWS', 50))
+APPLIANCE_DEFAULT_VOLTAGE = float(os.getenv('APPLIANCE_DEFAULT_VOLTAGE', 230.0))
+APPLIANCE_IDLE_CUTOFF_SECONDS = int(os.getenv('APPLIANCE_IDLE_CUTOFF_SECONDS', 300))
+APPLIANCE_CUTOFF_COMMAND_TOPIC = os.getenv('APPLIANCE_CUTOFF_COMMAND_TOPIC', 'aether/relay/command')
+APPLIANCE_CUTOFF_ENABLED = os.getenv('APPLIANCE_CUTOFF_ENABLED', 'True') == 'True'
+APPLIANCE_ELECTRICITY_RATE_PER_KWH = float(os.getenv('APPLIANCE_ELECTRICITY_RATE_PER_KWH', 8.0))
 
 # Energy recommendation engine defaults. Keep these environment-driven so
 # deployments can tune thresholds for local tariffs and sensor calibration.

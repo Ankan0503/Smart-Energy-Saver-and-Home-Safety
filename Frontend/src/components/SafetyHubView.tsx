@@ -27,15 +27,15 @@ export const SafetyHubView = ({
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="p-8 rounded-[3.5rem] bg-red-50 border-2 border-danger shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden"
+        className="p-4 sm:p-8 rounded-[1.75rem] sm:rounded-[3.5rem] bg-red-50 border-2 border-danger shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-5 sm:gap-6 relative overflow-hidden"
       >
         <div className="absolute inset-0 bg-danger/5 animate-pulse" />
-        <div className="relative z-10 flex items-center gap-6">
-          <div className="p-5 rounded-2xl bg-danger text-white animate-bounce shadow-md">
+        <div className="relative z-10 flex items-start sm:items-center gap-4 sm:gap-6">
+          <div className="p-4 sm:p-5 rounded-2xl bg-danger text-white animate-bounce shadow-md">
             <Power size={24} />
           </div>
           <div>
-            <h4 className="text-xl font-display font-bold text-ink mb-1">
+            <h4 className="text-lg sm:text-xl font-display font-bold text-ink mb-1">
               Safety Lockout Engaged ({systemStatus.replace('_', ' ')})
             </h4>
             <p className="text-xs font-semibold text-ink/60 leading-relaxed max-w-xl">
@@ -45,7 +45,7 @@ export const SafetyHubView = ({
         </div>
         <button
           onClick={onResetSafety}
-          className="relative z-10 px-8 py-4 bg-danger hover:bg-red-700 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl transition-all shadow-lg shadow-danger/20 hover:scale-[1.03] active:scale-[1.02]"
+          className="relative z-10 w-full md:w-auto px-6 sm:px-8 py-4 bg-danger hover:bg-red-700 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl transition-all shadow-lg shadow-danger/20 hover:scale-[1.03] active:scale-[1.02]"
         >
           Restore System Power
         </button>
@@ -57,14 +57,14 @@ export const SafetyHubView = ({
       animate={{ opacity: 1 }}
       className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6 2xl:gap-10"
     >
-      <div className={cn("p-6 xl:p-8 2xl:p-12 rounded-[2.5rem] 2xl:rounded-[4rem] border-2 transition-all duration-700 bg-white border-olive/5 shadow-sm", isFlame && "border-danger bg-danger/5 shadow-2xl shadow-danger/20")}>
+      <div className={cn("p-4 sm:p-6 xl:p-8 2xl:p-12 rounded-[1.75rem] sm:rounded-[2.5rem] 2xl:rounded-[4rem] border-2 transition-all duration-700 bg-white border-olive/5 shadow-sm", isFlame && "border-danger bg-danger/5 shadow-2xl shadow-danger/20")}>
         <div className="flex justify-between items-start mb-8 2xl:mb-12">
           <div className="flex items-center gap-6">
-            <div className={cn("p-8 rounded-[2.5rem] soft-shadow transition-transform", isFlame ? "bg-danger text-white scale-110" : "bg-bg-card text-ink/30")}>
-              <Flame size={48} />
+            <div className={cn("p-5 sm:p-8 rounded-[1.75rem] sm:rounded-[2.5rem] soft-shadow transition-transform", isFlame ? "bg-danger text-white scale-110" : "bg-bg-card text-ink/30")}>
+              <Flame size={40} />
             </div>
             <div>
-              <h4 className="text-2xl font-display font-medium text-ink leading-tight mb-2 italic">Infrared <br /> Thermal Array</h4>
+              <h4 className="text-xl sm:text-2xl font-display font-medium text-ink leading-tight mb-2 italic">Infrared <br /> Thermal Array</h4>
               <p className="text-xs font-bold text-ink/30 uppercase tracking-widest">MQ-2 + IR Shielding Active</p>
             </div>
           </div>
@@ -79,14 +79,14 @@ export const SafetyHubView = ({
         </div>
       </div>
 
-      <div className="p-6 xl:p-8 2xl:p-12 rounded-[2.5rem] 2xl:rounded-[4rem] bg-white border border-olive/5 shadow-sm space-y-8 2xl:space-y-12">
+      <div className="p-4 sm:p-6 xl:p-8 2xl:p-12 rounded-[1.75rem] sm:rounded-[2.5rem] 2xl:rounded-[4rem] bg-white border border-olive/5 shadow-sm space-y-8 2xl:space-y-12">
         <div>
           <div className="flex items-center gap-6 mb-10">
-            <div className={cn("p-8 rounded-[2.5rem] shadow-sm", gasLevel > 300 ? "bg-clay text-white" : "bg-bg-card text-ink/20")}>
-              <Wind size={48} />
+            <div className={cn("p-5 sm:p-8 rounded-[1.75rem] sm:rounded-[2.5rem] shadow-sm", gasLevel > 300 ? "bg-clay text-white" : "bg-bg-card text-ink/20")}>
+              <Wind size={40} />
             </div>
             <div>
-              <h4 className="text-2xl font-display font-medium text-ink italic leading-tight mb-2">Molecular <br /> Concentration</h4>
+              <h4 className="text-xl sm:text-2xl font-display font-medium text-ink italic leading-tight mb-2">Molecular <br /> Concentration</h4>
               <p className="text-xs font-bold text-ink/30 uppercase tracking-widest">{gasLevel.toFixed(1)} PPM</p>
             </div>
           </div>
@@ -97,12 +97,12 @@ export const SafetyHubView = ({
         </div>
       </div>
 
-      <div className="p-6 xl:p-8 2xl:p-12 rounded-[2.5rem] 2xl:rounded-[4rem] bg-olive text-white shadow-2xl shadow-olive/20 relative overflow-hidden flex flex-col min-h-[300px]">
+      <div className="p-4 sm:p-6 xl:p-8 2xl:p-12 rounded-[1.75rem] sm:rounded-[2.5rem] 2xl:rounded-[4rem] bg-olive text-white shadow-2xl shadow-olive/20 relative overflow-hidden flex flex-col min-h-[280px] sm:min-h-[300px]">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 blur-3xl rounded-full translate-x-1/2 -translate-y-1/2" />
         <ShieldAlert size={140} className="absolute -bottom-10 -right-10 opacity-5" />
         
         <h4 className="text-[10px] font-black uppercase tracking-[0.3em] mb-12 opacity-60">System Security</h4>
-        <div className="text-4xl font-display font-medium mb-4 italic leading-[1.1]">Mesh <br /> {isSecurityLocked ? 'Protected' : 'Unlocked'}.</div>
+        <div className="text-3xl sm:text-4xl font-display font-medium mb-4 italic leading-[1.1]">Mesh <br /> {isSecurityLocked ? 'Protected' : 'Unlocked'}.</div>
         <p className="text-[11px] opacity-60 mb-10 font-medium italic leading-relaxed">
           {isSecurityLocked 
             ? 'Active safety interlocks engaged. Relay power cutoff will trip instantly upon detecting hazards.' 

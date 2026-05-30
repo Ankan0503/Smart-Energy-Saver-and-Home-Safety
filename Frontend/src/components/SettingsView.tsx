@@ -414,7 +414,7 @@ export const SettingsView = ({
       <motion.div 
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md bg-white rounded-[3.5rem] p-10 border border-olive/15 shadow-2xl mx-auto mt-10 relative overflow-hidden"
+        className="max-w-md bg-white rounded-[1.75rem] sm:rounded-[3.5rem] p-5 sm:p-10 border border-olive/15 shadow-2xl mx-auto mt-4 sm:mt-10 relative overflow-hidden"
       >
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-olive via-sage to-clay" />
         <div className="flex flex-col items-center mb-8">
@@ -484,7 +484,7 @@ export const SettingsView = ({
           <button 
             type="submit" 
             disabled={isLoading}
-            className="w-full py-4 bg-olive text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-olive/10 hover:bg-olive/90 transition-all flex items-center justify-center gap-2"
+            className="w-full py-4 bg-olive text-white rounded-2xl text-[10px] font-black uppercase tracking-wider sm:tracking-widest shadow-lg shadow-olive/10 hover:bg-olive/90 transition-all flex items-center justify-center gap-2"
           >
             {isLoading ? <RefreshCw size={14} className="animate-spin" /> : null}
             {authTab === 'login' ? 'ESTABLISH MESH CHANNEL' : 'PROVISION NEW MESH NETWORK'}
@@ -498,23 +498,23 @@ export const SettingsView = ({
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="max-w-4xl bg-white rounded-[4rem] p-10 border border-olive/10 shadow-sm mx-auto pb-20 space-y-12"
+      className="max-w-4xl bg-white rounded-[1.75rem] sm:rounded-[3rem] 2xl:rounded-[4rem] p-4 sm:p-6 lg:p-10 border border-olive/10 shadow-sm mx-auto pb-20 space-y-8 sm:space-y-12"
     >
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-olive/5 pb-8">
-        <div className="flex items-center gap-6">
-          <div className="p-5 bg-olive text-white rounded-3xl soft-shadow">
-            <Settings size={28} />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-olive/5 pb-6 sm:pb-8">
+        <div className="flex items-center gap-4 sm:gap-6">
+          <div className="p-4 sm:p-5 bg-olive text-white rounded-2xl sm:rounded-3xl soft-shadow">
+            <Settings size={24} />
           </div>
           <div>
-            <h3 className="text-2xl font-display font-medium text-olive italic leading-none">System Preference Matrix</h3>
+            <h3 className="text-xl sm:text-2xl font-display font-medium text-olive italic leading-tight sm:leading-none">System Preference Matrix</h3>
             <p className="text-[10px] text-ink/30 font-black uppercase mt-1.5 tracking-widest">Mesh Configuration Dashboard</p>
           </div>
         </div>
         
         <button 
           onClick={handleLogout}
-          className="px-5 py-3 border border-danger/10 text-danger hover:bg-danger/5 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+          className="w-full sm:w-auto px-5 py-3 border border-danger/10 text-danger hover:bg-danger/5 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
         >
           <LogOut size={12} />
           Terminate Session
@@ -523,30 +523,30 @@ export const SettingsView = ({
 
       {/* Mesh Configuration Details */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="p-6 bg-olive/5 rounded-3xl border border-olive/5 flex items-start gap-4">
+        <div className="p-4 sm:p-6 bg-olive/5 rounded-2xl sm:rounded-3xl border border-olive/5 flex items-start gap-4 min-w-0">
           <div className="p-3 bg-olive/10 text-olive rounded-2xl">
             <Layers size={20} />
           </div>
           <div>
             <h4 className="text-[9px] font-black text-olive/40 uppercase tracking-widest mb-1">Mesh Identifier</h4>
-            <div className="text-sm font-bold text-ink italic font-mono selection:bg-olive/20">{meshId}</div>
+            <div className="text-xs sm:text-sm font-bold text-ink italic font-mono selection:bg-olive/20 break-all">{meshId}</div>
             <p className="text-[8px] text-ink/40 font-bold uppercase tracking-wider mt-1">Required for ESP32 configuration</p>
           </div>
         </div>
 
-        <div className="p-6 bg-olive/5 rounded-3xl border border-olive/5 flex items-start gap-4">
+        <div className="p-4 sm:p-6 bg-olive/5 rounded-2xl sm:rounded-3xl border border-olive/5 flex items-start gap-4 min-w-0">
           <div className="p-3 bg-olive/10 text-olive rounded-2xl">
             <Key size={20} />
           </div>
           <div>
             <h4 className="text-[9px] font-black text-olive/40 uppercase tracking-widest mb-1">Mesh Secret Key</h4>
-            <div className="text-sm font-bold text-ink italic font-mono selection:bg-olive/20 select-all">{meshKey}</div>
+            <div className="text-xs sm:text-sm font-bold text-ink italic font-mono selection:bg-olive/20 select-all break-all">{meshKey}</div>
             <p className="text-[8px] text-ink/40 font-bold uppercase tracking-wider mt-1">Do not share. Secures peer-to-peer ESP-NOW</p>
           </div>
         </div>
       </div>
 
-      <div className="p-6 bg-bg-card/20 rounded-3xl border border-olive/10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="p-4 sm:p-6 bg-bg-card/20 rounded-2xl sm:rounded-3xl border border-olive/10 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="flex items-start gap-4">
           <div className={`p-3 rounded-2xl ${pushStatus.subscribed ? 'bg-sage/15 text-sage' : 'bg-olive/10 text-olive'}`}>
             {pushStatus.subscribed ? <BellRing size={20} /> : <Bell size={20} />}
@@ -567,7 +567,7 @@ export const SettingsView = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-3 w-full md:w-auto">
           <button
             type="button"
             onClick={pushStatus.subscribed ? handleDisablePush : handleEnablePush}
@@ -598,7 +598,7 @@ export const SettingsView = ({
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="p-8 rounded-[2.5rem] bg-gradient-to-br from-sage/10 to-olive/5 border border-sage/30 shadow-sm relative overflow-hidden"
+        className="p-4 sm:p-8 rounded-[1.75rem] sm:rounded-[2.5rem] bg-gradient-to-br from-sage/10 to-olive/5 border border-sage/30 shadow-sm relative overflow-hidden"
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-sage/20 rounded-full blur-2xl translate-x-6 -translate-y-6" />
           <div className="flex items-center gap-4 mb-6">
@@ -613,15 +613,15 @@ export const SettingsView = ({
             {unlinkedDevices.map((dev) => (
               <div 
                 key={dev.mac_address}
-                className="p-5 bg-white rounded-3xl border border-olive/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all hover:shadow-md"
+                className="p-4 sm:p-5 bg-white rounded-2xl sm:rounded-3xl border border-olive/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all hover:shadow-md"
               >
                 <div>
                   <div className="text-xs font-mono font-bold text-ink">{dev.mac_address}</div>
                   <div className="text-[8px] text-ink/30 font-black uppercase tracking-wider mt-0.5">Discovered via Central Gateway</div>
                 </div>
 
-                <div className="flex flex-1 max-w-lg items-center gap-3 w-full">
-                  <div className="flex items-center bg-bg-card/25 border border-olive/10 rounded-xl px-3 py-1 flex-1 min-w-[120px]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex flex-1 max-w-lg items-center gap-3 w-full">
+                  <div className="flex items-center bg-bg-card/25 border border-olive/10 rounded-xl px-3 py-1 flex-1 min-w-0 sm:min-w-[120px]">
                     <span className="text-[10px] font-bold text-olive/40 select-none">aether-</span>
                     <input 
                       type="text"
@@ -638,7 +638,7 @@ export const SettingsView = ({
                     maxLength={30}
                     value={pairingDisplays[dev.mac_address] || ''}
                     onChange={e => setPairingDisplays({ ...pairingDisplays, [dev.mac_address]: e.target.value })}
-                    className="flex-1 px-4 py-2.5 bg-bg-card/25 border border-olive/10 rounded-xl text-[10px] font-bold text-ink focus:outline-none focus:border-olive min-w-[150px]"
+                    className="flex-1 px-4 py-2.5 bg-bg-card/25 border border-olive/10 rounded-xl text-[10px] font-bold text-ink focus:outline-none focus:border-olive min-w-0 sm:min-w-[150px]"
                   />
                   <select
                     value={pairingRoles[dev.mac_address] || 'sensor'}
@@ -666,7 +666,7 @@ export const SettingsView = ({
 
       {/* Paired Device List Table */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <h4 className="text-xs font-black text-ink uppercase tracking-widest">Active Mesh Nodes</h4>
             <p className="text-[9px] text-ink/30 font-bold italic mt-0.5">List of devices cryptographically bound to your mesh network</p>
@@ -686,7 +686,7 @@ export const SettingsView = ({
             <p className="text-[10px] text-ink/40 font-bold italic">No devices paired to this mesh yet.</p>
           </div>
         ) : (
-          <div className="bg-bg-card/10 border border-olive/5 rounded-3xl overflow-hidden">
+          <div className="bg-bg-card/10 border border-olive/5 rounded-2xl sm:rounded-3xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -851,7 +851,7 @@ export const SettingsView = ({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ type: 'spring', duration: 0.4 }}
-              className="relative w-full max-w-md bg-white rounded-[3.5rem] p-10 border border-olive/15 shadow-2xl overflow-hidden z-10"
+              className="relative w-full max-w-md bg-white rounded-[1.75rem] sm:rounded-[3.5rem] p-5 sm:p-10 border border-olive/15 shadow-2xl overflow-hidden z-10 max-h-[92vh] overflow-y-auto"
             >
               {/* Top Warning Strip */}
               <div className={`absolute top-0 left-0 w-full h-2 ${
@@ -940,7 +940,7 @@ export const SettingsView = ({
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-4 w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full">
                   <button
                     type="button"
                     disabled={isDeleting}

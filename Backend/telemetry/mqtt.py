@@ -17,9 +17,9 @@ def on_connect(client, userdata, flags, rc, properties=None):
         print(f"Failed to connect, return code {rc}")
 
 def on_message(client, userdata, msg):
-    from telemetry.models import TelemetryReading
     from devices.models import Device
     from django.db import close_old_connections
+    from telemetry.ingestion import ingest_telemetry_payload
     try:
         close_old_connections()
         payload = msg.payload.decode()
@@ -42,6 +42,7 @@ def on_message(client, userdata, msg):
                 print(f"Discovered unlinked device: {mac} (Role: {role})")
                 
         elif msg.topic == "aether/telemetry":
+<<<<<<< Updated upstream
             mac = data.get("mac")
             gas = data.get("gas", 0)
             current = data.get("current", 0)
@@ -68,8 +69,13 @@ def on_message(client, userdata, msg):
                 pir=pir,
                 flame=flame,
                 status=status
+=======
+            reading, prediction = ingest_telemetry_payload(data)
+            print(
+                f"Saved Telemetry from {reading.device_id}: current={reading.current}A "
+                f"power={reading.power}W state={prediction.predicted_state if prediction else 'N/A'}"
+>>>>>>> Stashed changes
             )
-            print(f"Saved Telemetry from {mac or 'legacy'}: {data}")
             
     except Exception as e:
         print(f"Error parsing MQTT message on {msg.topic}: {e}")

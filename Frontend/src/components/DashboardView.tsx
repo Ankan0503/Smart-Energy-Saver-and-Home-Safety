@@ -92,13 +92,13 @@ export const DashboardView = ({
     risk: 0,
   }));
 
-  const cardBase = "bg-white border border-olive/10 rounded-3xl shadow-sm";
+  const cardBase = "bg-white border border-olive/10 rounded-[1.5rem] sm:rounded-3xl shadow-sm";
 
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-    className="space-y-6 2xl:space-y-8 pb-20"
+      className="space-y-5 sm:space-y-6 2xl:space-y-8 pb-20"
     >
       <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6">
         <div>
@@ -106,13 +106,13 @@ export const DashboardView = ({
             <Activity size={14} className="animate-pulse" />
             AI Energy Operations
           </div>
-          <h2 className="text-3xl md:text-5xl font-display font-semibold text-ink leading-tight">Smart Home Energy Command Center</h2>
+          <h2 className="text-2xl sm:text-3xl md:text-5xl font-display font-semibold text-ink leading-tight">Smart Home Energy Command Center</h2>
           <p className="text-sm text-ink/50 mt-3 max-w-3xl">Live sensor telemetry, predictive safety scoring, anomaly detection and savings recommendations from the Django AI services.</p>
         </div>
         <button 
           onClick={onGoToSafety}
           className={cn(
-            "px-5 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 self-start xl:self-auto",
+            "w-full sm:w-auto px-5 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-3 self-start xl:self-auto",
             riskCritical ? "bg-danger text-white shadow-xl shadow-danger/20 animate-pulse" : "bg-ink text-white hover:bg-olive"
           )}
         >
@@ -129,7 +129,7 @@ export const DashboardView = ({
           { label: 'Risk Score', value: riskScore, icon: Gauge, sub: hazardRisk?.severity || 'low', tone: riskCritical ? 'danger' : 'olive' },
           { label: 'Monthly Savings', value: `₹${estimatedSavings.toFixed(0)}`, icon: IndianRupee, sub: 'estimated by engine', tone: 'clay' },
         ].map((item) => (
-          <div key={item.label} className={`${cardBase} p-5 min-h-[144px]`}>
+          <div key={item.label} className={`${cardBase} p-4 sm:p-5 min-h-[132px] sm:min-h-[144px]`}>
             <div className="flex items-start justify-between gap-3">
               <div className={cn(
                 "w-11 h-11 rounded-2xl flex items-center justify-center",
@@ -143,7 +143,7 @@ export const DashboardView = ({
             </div>
             <div className="mt-5">
               <p className="text-[10px] font-black uppercase tracking-widest text-ink/35">{item.label}</p>
-              <div className="text-3xl font-display font-semibold text-ink mt-1">{item.value}</div>
+              <div className="text-2xl sm:text-3xl font-display font-semibold text-ink mt-1">{item.value}</div>
               <p className="text-[11px] text-ink/45 mt-1 capitalize">{item.sub}</p>
             </div>
           </div>
@@ -151,7 +151,7 @@ export const DashboardView = ({
       </div>
 
       <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
-        <div className={`${cardBase} 2xl:col-span-2 p-6 md:p-8`}>
+        <div className={`${cardBase} 2xl:col-span-2 p-4 sm:p-6 md:p-8`}>
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-widest text-ink">Real-Time Sensor Visualization</h3>
@@ -162,7 +162,7 @@ export const DashboardView = ({
               Live
             </div>
           </div>
-          <div className="h-[320px] 2xl:h-[360px]">
+          <div className="h-[260px] sm:h-[320px] 2xl:h-[360px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
                 <defs>
@@ -188,7 +188,7 @@ export const DashboardView = ({
         </div>
 
         <div className={cn(
-          `${cardBase} p-6 md:p-8 relative overflow-hidden`,
+          `${cardBase} p-4 sm:p-6 md:p-8 relative overflow-hidden`,
           riskCritical && "border-danger/40 shadow-danger/10 hazard-warning"
         )}>
           <div className={cn("absolute inset-x-0 top-0 h-1", riskCritical ? "bg-danger" : "bg-olive")} />
@@ -201,7 +201,7 @@ export const DashboardView = ({
               {hazardRisk?.hazard_type?.includes('FIRE') ? <Flame size={22} /> : <ShieldAlert size={22} />}
             </div>
           </div>
-          <div className="h-56">
+          <div className="h-48 sm:h-56">
             <ResponsiveContainer width="100%" height="100%">
               <RadialBarChart innerRadius="72%" outerRadius="100%" data={[{ name: 'Risk', value: riskScore, fill: riskCritical ? '#bc4749' : '#606C38' }]} startAngle={180} endAngle={-180}>
                 <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
@@ -210,7 +210,7 @@ export const DashboardView = ({
             </ResponsiveContainer>
           </div>
           <div className="text-center -mt-36 mb-16 pointer-events-none">
-            <div className={cn("text-6xl font-display font-semibold", riskCritical ? "text-danger" : "text-olive")}>{riskScore}</div>
+            <div className={cn("text-5xl sm:text-6xl font-display font-semibold", riskCritical ? "text-danger" : "text-olive")}>{riskScore}</div>
             <div className="text-[10px] font-black uppercase tracking-widest text-ink/35">{hazardRisk?.severity || 'Low'} Risk</div>
           </div>
           <div className="grid grid-cols-3 gap-2">
@@ -229,7 +229,7 @@ export const DashboardView = ({
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
-        <div className={`${cardBase} p-6 md:p-8`}>
+        <div className={`${cardBase} p-4 sm:p-6 md:p-8`}>
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-widest text-ink">AI Insights</h3>
@@ -255,7 +255,7 @@ export const DashboardView = ({
           </div>
         </div>
 
-        <div className={`${cardBase} p-6 md:p-8`}>
+        <div className={`${cardBase} p-4 sm:p-6 md:p-8`}>
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-widest text-ink">Anomaly Alerts</h3>
@@ -282,7 +282,7 @@ export const DashboardView = ({
           </div>
         </div>
 
-        <div className={`${cardBase} p-6 md:p-8`}>
+        <div className={`${cardBase} p-4 sm:p-6 md:p-8`}>
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-sm font-bold uppercase tracking-widest text-ink">Energy Trends</h3>
@@ -290,7 +290,7 @@ export const DashboardView = ({
             </div>
             <TrendingUp size={22} className="text-olive" />
           </div>
-          <div className="h-52">
+          <div className="h-44 sm:h-52">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={zones.map((zone) => ({ name: zone.name.split(' ')[0], watts: zone.active ? zone.nominalConsumption : Math.round(zone.nominalConsumption * 0.08) }))}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#3E423A10" />

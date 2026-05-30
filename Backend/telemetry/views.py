@@ -14,6 +14,7 @@ def get_latest_telemetry(request):
             return JsonResponse({
                 "gas": 0,
                 "current": 0,
+                "power": 0,
                 "pir": 1,
                 "flame": 1,
                 "status": "SAFE",
@@ -28,6 +29,7 @@ def get_latest_telemetry(request):
             return JsonResponse({
                 "gas": 0,
                 "current": 0,
+                "power": 0,
                 "pir": 1,
                 "flame": 1,
                 "status": "SAFE",
@@ -39,8 +41,13 @@ def get_latest_telemetry(request):
         latest_readings = []
         for dev in user_devices:
             try:
+<<<<<<< Updated upstream
                 # Find the latest reading for each paired device (using string comparison for device_id)
                 r = TelemetryReading.objects.filter(device_id=str(dev.id)).latest('id')
+=======
+                # Find the latest reading for each paired device
+                r = TelemetryReading.objects.filter(device_ref=dev).latest('id')
+>>>>>>> Stashed changes
                 
                 # Only consider it active if seen in the last 15 seconds
                 from django.utils import timezone
@@ -52,13 +59,18 @@ def get_latest_telemetry(request):
         if not latest_readings:
             # Fallback to the absolute latest reading if no active ones in the last 15 seconds
             try:
+<<<<<<< Updated upstream
                 device_ids = [str(d.id) for d in user_devices]
                 latest = TelemetryReading.objects.filter(device_id__in=device_ids).latest('id')
+=======
+                latest = TelemetryReading.objects.filter(device_ref__in=user_devices).latest('id')
+>>>>>>> Stashed changes
                 latest_readings = [latest]
             except TelemetryReading.DoesNotExist:
                 return JsonResponse({
                     "gas": 0,
                     "current": 0,
+                    "power": 0,
                     "pir": 1,
                     "flame": 1,
                     "status": "SAFE",
@@ -71,6 +83,7 @@ def get_latest_telemetry(request):
         max_gas = max(r.gas for r in latest_readings)
         min_flame = min(r.flame for r in latest_readings) # Active-LOW: 0 means fire, 1 means safe
         max_current = max(r.current for r in latest_readings)
+        max_power = max(r.power for r in latest_readings)
         min_pir = min(r.pir for r in latest_readings) # 0 means at least one active device reports no occupancy
         
         # Propagate warning statuses if any active device has it
@@ -86,18 +99,20 @@ def get_latest_telemetry(request):
         data = {
             "gas": max_gas,
             "current": max_current,
+            "power": max_power,
             "pir": min_pir,
             "flame": min_flame,
             "status": status,
             "timestamp": absolute_latest.timestamp.isoformat(),
-            "device_mac": absolute_latest.device.mac_address,
-            "device_name": absolute_latest.device.name
+            "device_mac": absolute_latest.device_ref.mac_address if absolute_latest.device_ref else absolute_latest.device_id,
+            "device_name": absolute_latest.device_ref.name if absolute_latest.device_ref else absolute_latest.device_id
         }
     except Exception as e:
         print(f"Error fetching latest telemetry: {e}")
         data = {
             "gas": 0,
             "current": 0,
+            "power": 0,
             "pir": 1,
             "flame": 1,
             "status": "SAFE",

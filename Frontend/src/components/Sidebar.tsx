@@ -13,7 +13,8 @@ import {
   Wind, 
   Layers, 
   Activity,
-  User
+  User,
+  Box
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -55,6 +56,7 @@ export const Sidebar = ({
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'zones', label: 'Energy Zones', icon: Zap, badge: zonesCount },
         { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+        { id: 'digital-twin', label: 'Digital Twin', icon: Box },
       ],
     },
     {

@@ -43,10 +43,10 @@ export const AnalyticsView = ({
   >
     <div className="flex flex-col xl:flex-row xl:justify-between xl:items-end gap-5">
       <div>
-        <h2 className="text-4xl font-display font-medium text-ink leading-none mb-3">Mesh Analytics</h2>
+        <h2 className="text-2xl sm:text-4xl font-display font-medium text-ink leading-tight sm:leading-none mb-3">Mesh Analytics</h2>
         <p className="text-[10px] text-ink/30 font-black uppercase tracking-[0.3em]">Advanced topological load research</p>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
         {isLoading && (
           <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 2, ease: "linear" }}>
             <Cpu size={16} className="text-olive" />
@@ -58,7 +58,7 @@ export const AnalyticsView = ({
               key={t} 
               onClick={() => onRangeChange(t)}
               className={cn(
-                "px-6 py-2.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all", 
+                "px-4 sm:px-6 py-2.5 rounded-full text-[9px] font-black uppercase tracking-widest transition-all shrink-0", 
                 activeRange === t ? "bg-white text-olive shadow-sm" : "text-ink/30 hover:text-ink"
               )}
             >
@@ -70,8 +70,8 @@ export const AnalyticsView = ({
     </div>
 
     <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6 2xl:gap-8">
-      <div className="2xl:col-span-2 bg-white rounded-[2.5rem] 2xl:rounded-[4rem] p-6 xl:p-8 2xl:p-12 border border-olive/10 soft-shadow">
-        <div className="flex justify-between items-center mb-10">
+      <div className="2xl:col-span-2 bg-white rounded-[1.75rem] sm:rounded-[2.5rem] 2xl:rounded-[4rem] p-4 sm:p-6 xl:p-8 2xl:p-12 border border-olive/10 soft-shadow">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 sm:mb-10">
           <div className="flex items-center gap-4">
             <div className="p-3 bg-sage/10 rounded-2xl">
               <TrendingUp size={24} className="text-olive" />
@@ -81,12 +81,12 @@ export const AnalyticsView = ({
                <p className="text-[9px] text-ink/20 font-black uppercase mt-0.5 tracking-widest">Aggregate node stress test</p>
             </div>
           </div>
-          <div className="text-right">
+          <div className="text-left sm:text-right">
              <div className="text-[8px] font-black text-ink/20 uppercase tracking-widest">Stability Index</div>
              <div className="text-xl font-display font-medium text-olive">0.982 <span className="text-xs opacity-40">σ</span></div>
           </div>
         </div>
-        <div className="h-[320px] 2xl:h-96">
+        <div className="h-[260px] sm:h-[320px] 2xl:h-96">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data}>
               <defs>
@@ -110,7 +110,7 @@ export const AnalyticsView = ({
       </div>
 
       <div className="space-y-8">
-        <div className="bg-bg-card/40 rounded-[2.5rem] 2xl:rounded-[3.5rem] p-6 xl:p-8 2xl:p-10 border border-olive/10 h-full min-h-[320px] flex flex-col items-center justify-center text-center relative overflow-hidden">
+        <div className="bg-bg-card/40 rounded-[1.75rem] sm:rounded-[2.5rem] 2xl:rounded-[3.5rem] p-4 sm:p-6 xl:p-8 2xl:p-10 border border-olive/10 h-full min-h-[280px] sm:min-h-[320px] flex flex-col items-center justify-center text-center relative overflow-hidden">
            {isLoading && (
              <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
                 <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 3, ease: "linear" }}>

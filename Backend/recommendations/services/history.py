@@ -17,15 +17,23 @@ def readings_from_database(days: int = 30, user=None, device_id=None) -> pd.Data
     since = timezone.now() - timedelta(days=days)
     queryset = (
         TelemetryReading.objects
+<<<<<<< Updated upstream
+=======
+        .select_related('device_ref')
+>>>>>>> Stashed changes
         .filter(timestamp__gte=since)
         .order_by('timestamp')
     )
 
     from devices.models import Device
     if user is not None:
+<<<<<<< Updated upstream
         user_devices = Device.objects.filter(owner=user, is_paired=True)
         device_ids = [str(d.id) for d in user_devices]
         queryset = queryset.filter(device_id__in=device_ids)
+=======
+        queryset = queryset.filter(device_ref__owner=user, device_ref__is_paired=True)
+>>>>>>> Stashed changes
     if device_id:
         queryset = queryset.filter(device_id=str(device_id))
 
@@ -33,17 +41,20 @@ def readings_from_database(days: int = 30, user=None, device_id=None) -> pd.Data
     all_user_devices = {str(d.id): d for d in Device.objects.filter(owner=user)} if user else {}
 
     rows = []
-    voltage = float(getattr(settings, 'RECOMMENDATION_DEFAULT_VOLTAGE', 230.0))
     for reading in queryset:
+<<<<<<< Updated upstream
         dev = all_user_devices.get(str(reading.device_id))
         device_name = dev.name if dev else 'Unknown appliance'
+=======
+        device_name = reading.device_ref.name if reading.device_ref else reading.device_id
+>>>>>>> Stashed changes
         rows.append({
             'timestamp': reading.timestamp,
             'appliance': device_name,
             'device_id': reading.device_id,
             'current': float(reading.current or 0),
             'pir': 1 if int(reading.pir or 0) else 0,
-            'power_watts': float(reading.current or 0) * voltage,
+            'power_watts': float(reading.power or 0),
         })
 
     return pd.DataFrame(rows)

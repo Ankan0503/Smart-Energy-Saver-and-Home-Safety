@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Zap,
@@ -48,6 +48,8 @@ import { sendHazardNotification } from './services/pwaService';
 
 // Import refactored hook
 import { useAudioAlert } from './hooks/useAudioAlert';
+
+const DigitalTwinView = lazy(() => import('./components/DigitalTwinView').then(module => ({ default: module.DigitalTwinView })));
 
 // --- Mock Data ---
 const generateChartData = (range: string = 'Daily') => {
@@ -834,19 +836,19 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-ink/20 backdrop-blur-sm"
+              className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-ink/20 backdrop-blur-sm"
               onClick={() => setSelectedZone(null)}
             >
               <motion.div
                 initial={{ scale: 0.95, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
-                className="max-w-4xl w-full bg-white rounded-[4rem] p-8 md:p-12 shadow-2xl relative border border-olive/10 max-h-[90vh] overflow-y-auto no-scrollbar"
+                className="max-w-4xl w-full bg-white rounded-[1.75rem] sm:rounded-[3rem] lg:rounded-[4rem] p-4 sm:p-8 md:p-12 shadow-2xl relative border border-olive/10 max-h-[92vh] overflow-y-auto no-scrollbar"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="flex justify-between items-start mb-12">
-                  <div className="flex items-center gap-6">
-                    <div className={cn("p-6 rounded-3xl bg-bg-card shadow-sm relative group", selectedZone.color)}>
-                      <selectedZone.icon size={32} />
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-5 mb-8 sm:mb-12">
+                  <div className="flex items-center gap-4 sm:gap-6 min-w-0">
+                    <div className={cn("p-4 sm:p-6 rounded-2xl sm:rounded-3xl bg-bg-card shadow-sm relative group shrink-0", selectedZone.color)}>
+                      <selectedZone.icon size={28} />
                       {selectedZone.active && isEcoMode && (
                         <motion.div
                           animate={{ scale: [1, 1.2, 1] }}
@@ -858,9 +860,9 @@ export default function App() {
                       )}
                     </div>
                     <div>
-                      <h2 className="text-3xl font-display font-medium text-ink leading-none mb-2">{selectedZone.name}</h2>
-                      <div className="flex items-center gap-3 mt-1">
-                        <p className="text-[10px] font-bold text-ink/30 uppercase tracking-[0.2em]">{selectedZone.type}</p>
+                      <h2 className="text-2xl sm:text-3xl font-display font-medium text-ink leading-tight sm:leading-none mb-2">{selectedZone.name}</h2>
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1">
+                        <p className="text-[10px] font-bold text-ink/30 uppercase tracking-wider sm:tracking-[0.2em]">{selectedZone.type}</p>
                         <span className="w-1 h-1 rounded-full bg-ink/20" />
                         <p className={cn(
                           "text-[10px] font-bold uppercase tracking-[0.2em]",
@@ -878,7 +880,7 @@ export default function App() {
                   <button
                     onClick={() => toggleZone(selectedZone.id)}
                     className={cn(
-                      "group relative overflow-hidden px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all",
+                      "w-full sm:w-auto group relative overflow-hidden px-6 sm:px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all",
                       selectedZone.active ? "bg-olive text-white shadow-xl shadow-olive/10" : "bg-bg-card text-ink/40"
                     )}
                   >
@@ -894,11 +896,11 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-12">
                   <div className="space-y-8">
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
                       <h4 className="text-[10px] font-black uppercase text-ink/20 tracking-widest">Thermal Load Profile</h4>
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
                         <button
                           onClick={() => setIsComparing(!isComparing)}
                           className={cn(
@@ -909,7 +911,7 @@ export default function App() {
                           <Activity size={10} />
                           {isComparing ? 'Comparing' : 'Compare'}
                         </button>
-                        <div className="flex gap-2 bg-bg-card/50 p-1 rounded-full">
+                        <div className="flex gap-2 bg-bg-card/50 p-1 rounded-full shrink-0">
                           {['Daily', 'Weekly', 'Monthly'].map(r => (
                             <button
                               key={r}
@@ -928,7 +930,7 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                    <div className="h-64 w-full bg-bg-card/10 rounded-[3rem] p-8 relative overflow-hidden border border-olive/5">
+                    <div className="h-56 sm:h-64 w-full bg-bg-card/10 rounded-[1.75rem] sm:rounded-[3rem] p-3 sm:p-8 relative overflow-hidden border border-olive/5">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={data}>
                           <defs>
@@ -1003,7 +1005,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="space-y-8 border-t lg:border-t-0 lg:border-l border-olive/5 pt-12 lg:pt-0 lg:pl-12">
+                  <div className="space-y-8 border-t lg:border-t-0 lg:border-l border-olive/5 pt-8 sm:pt-12 lg:pt-0 lg:pl-12">
                     <div className="space-y-6">
                       <div className="flex justify-between items-center">
                         <h4 className="text-[10px] font-black uppercase text-ink/20 tracking-widest">Applied Logic Rules</h4>
@@ -1021,9 +1023,9 @@ export default function App() {
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}
-                            className="p-6 bg-bg-card/50 rounded-[2.5rem] border border-olive/10 space-y-4 overflow-hidden"
+                            className="p-4 sm:p-6 bg-bg-card/50 rounded-[1.75rem] sm:rounded-[2.5rem] border border-olive/10 space-y-4 overflow-hidden"
                           >
-                            <div className="grid grid-cols-2 gap-4 text-center">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-center">
                               <div>
                                 <label className="text-[8px] font-black uppercase text-ink/30 mb-2 block tracking-widest">When</label>
                                 <div className="flex flex-wrap gap-2 justify-center">
@@ -1072,7 +1074,7 @@ export default function App() {
 
                       <div className="space-y-3">
                         {selectedZone.rules.map((rule: any, i: number) => (
-                          <div key={i} className="p-4 bg-bg-base border border-olive/5 rounded-2xl text-[11px] font-bold text-ink/70 flex items-center justify-between italic">
+                          <div key={i} className="p-4 bg-bg-base border border-olive/5 rounded-2xl text-[11px] font-bold text-ink/70 flex items-center justify-between gap-3 italic">
                             <div className="flex items-center gap-4">
                               <div className={cn("w-1.5 h-1.5 rounded-full transition-colors", rule.active ? "bg-sage" : "bg-ink/10")} />
                               {rule.text}
@@ -1127,18 +1129,18 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.02 }}
-              className="space-y-12 pb-20"
+              className="space-y-8 sm:space-y-12 pb-20"
             >
               <div>
-                <h2 className="text-3xl font-display font-medium text-olive mb-2 italic">Energy Topology</h2>
-                <p className="text-[10px] text-ink/30 font-black uppercase tracking-[0.3em] mb-10">Spatial load mapping across the mesh</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <h2 className="text-2xl sm:text-3xl font-display font-medium text-olive mb-2 italic">Energy Topology</h2>
+                <p className="text-[10px] text-ink/30 font-black uppercase tracking-wider sm:tracking-[0.3em] mb-6 sm:mb-10">Spatial load mapping across the mesh</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {zones.map((zone) => (
                     <div
                       key={zone.id}
                       onClick={() => setSelectedZone(zone)}
                       className={cn(
-                        "p-8 rounded-[3.5rem] border transition-all cursor-pointer flex flex-col justify-between group h-64",
+                        "p-5 sm:p-8 rounded-[1.75rem] sm:rounded-[3.5rem] border transition-all cursor-pointer flex flex-col justify-between group h-56 sm:h-64",
                         zone.active ? "bg-white border-olive/10 soft-shadow" : "bg-bg-card/30 border-transparent opacity-60"
                       )}
                     >
@@ -1223,6 +1225,20 @@ export default function App() {
                 setAiSuggestions(prev => prev.filter(s => s.text !== text));
               }}
             />
+          )}
+
+          {activeView === 'digital-twin' && (
+            <Suspense fallback={
+              <div className="min-h-[420px] rounded-[2.5rem] bg-white border border-olive/10 flex items-center justify-center text-sm font-bold text-olive">
+                Loading digital twin...
+              </div>
+            }>
+              <DigitalTwinView
+                token={token}
+                liveTelemetry={liveTelemetry}
+                addToast={addToast}
+              />
+            </Suspense>
           )}
 
           {activeView === 'controls' && (

@@ -1,0 +1,135 @@
+from pathlib import Path
+from datetime import timedelta
+
+import joblib
+import pandas as pd
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
+from django.utils import timezone
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+from anomaly.ml.appliance_state import (
+    FEATURE_COLUMNS,
+    STATE_ABNORMAL,
+    STATE_ACTIVE,
+    STATE_IDLE,
+    STATE_PHANTOM_LOAD,
+    clear_appliance_model_cache,
+)
+from telemetry.models import TelemetryReading
+
+
+def _label_row(row, device_stats):
+    power = float(row['power'])
+    current = float(row['current'])
+    pir = int(row['pir'])
+    stats = device_stats[row['device_id']]
+    avg_power = max(float(stats['avg_power']), 1e-6)
+    max_power = max(float(stats['max_power']), 1e-6)
+
+    if power > max(1800.0, max_power * 1.35) or current > 8:
+        return STATE_ABNORMAL
+    if pir == 0 and 3 <= power <= max(20.0, avg_power * 0.25):
+        return STATE_PHANTOM_LOAD
+    if pir == 0 and power > max(20.0, avg_power * 0.25):
+        return STATE_IDLE
+    if power > max(15.0, avg_power * 0.15):
+        return STATE_ACTIVE
+    return STATE_IDLE
+
+
+class Command(BaseCommand):
+    help = 'Train the RandomForest appliance state classifier from telemetry history.'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--days', type=int, default=60)
+        parser.add_argument('--output', default=None)
+        parser.add_argument('--min-rows', type=int, default=None)
+
+    def handle(self, *args, **options):
+        days = max(1, int(options['days']))
+        min_rows = int(options['min_rows'] or getattr(settings, 'APPLIANCE_MODEL_MIN_ROWS', 50))
+        since = timezone.now() - timedelta(days=days)
+        queryset = TelemetryReading.objects.filter(timestamp__gte=since).order_by('timestamp')
+
+        rows = []
+        for reading in queryset.iterator():
+            local_ts = timezone.localtime(reading.timestamp)
+            rows.append({
+                'device_id': reading.device_id,
+                'current': float(reading.current or 0.0),
+                'power': float(reading.power or 0.0),
+                'pir': 1 if int(reading.pir or 0) else 0,
+                'hour_of_day': local_ts.hour,
+                'day_of_week': local_ts.weekday(),
+            })
+
+        frame = pd.DataFrame(rows)
+        if len(frame) < min_rows:
+            raise CommandError(f'Need at least {min_rows} telemetry rows, found {len(frame)}.')
+
+        device_stats = (
+            frame.groupby('device_id')['power']
+            .agg(avg_power='mean', max_power='max')
+            .to_dict('index')
+        )
+        frame['device_avg_power'] = frame['device_id'].map(lambda value: device_stats[value]['avg_power'])
+        frame['device_max_power'] = frame['device_id'].map(lambda value: device_stats[value]['max_power'])
+        frame['power_to_avg_ratio'] = frame['power'] / frame['device_avg_power'].clip(lower=1e-6)
+        frame['label'] = frame.apply(lambda row: _label_row(row, device_stats), axis=1)
+
+        numeric_features = [name for name in FEATURE_COLUMNS if name != 'device_id']
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('numeric', StandardScaler(), numeric_features),
+                ('device', OneHotEncoder(handle_unknown='ignore'), ['device_id']),
+            ]
+        )
+        classifier = RandomForestClassifier(
+            n_estimators=180,
+            max_depth=12,
+            min_samples_leaf=2,
+            class_weight='balanced_subsample',
+            random_state=42,
+            n_jobs=-1,
+        )
+        pipeline = Pipeline([
+            ('preprocess', preprocessor),
+            ('model', classifier),
+        ])
+
+        X = frame[FEATURE_COLUMNS]
+        y = frame['label']
+        stratify = y if y.value_counts().min() >= 2 and y.nunique() > 1 else None
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=0.2,
+            random_state=42,
+            stratify=stratify,
+        )
+        pipeline.fit(X_train, y_train)
+        report = classification_report(y_test, pipeline.predict(X_test), output_dict=True, zero_division=0)
+
+        output = Path(options['output'] or getattr(settings, 'APPLIANCE_STATE_MODEL_PATH'))
+        output.parent.mkdir(parents=True, exist_ok=True)
+        bundle = {
+            'pipeline': pipeline,
+            'features': FEATURE_COLUMNS,
+            'model_version': f"rf-{timezone.now().strftime('%Y%m%d%H%M%S')}",
+            'trained_at': timezone.now().isoformat(),
+            'training_rows': int(len(frame)),
+            'training_days': days,
+            'label_counts': frame['label'].value_counts().to_dict(),
+            'classification_report': report,
+        }
+        joblib.dump(bundle, output)
+        clear_appliance_model_cache()
+
+        self.stdout.write(self.style.SUCCESS(f'Trained appliance state model: {output}'))
+        self.stdout.write(f"Rows: {len(frame)} Labels: {bundle['label_counts']}")

@@ -322,10 +322,14 @@ def reset_safety(request):
         from django.db.models import Q
 
         # Check if currently there is an active emergency in the very latest telemetry
+<<<<<<< Updated upstream
         from .models import Device
         user_device_ids = [str(d.id) for d in Device.objects.filter(owner=user)]
         
         latest_reading = TelemetryReading.objects.filter(device_id__in=user_device_ids).order_by('-timestamp').first()
+=======
+        latest_reading = TelemetryReading.objects.filter(device_ref__owner=user).order_by('-timestamp').first()
+>>>>>>> Stashed changes
         if latest_reading:
             if latest_reading.gas > 3500 or latest_reading.flame == 0:
                 return JsonResponse({"error": "Cannot restore power. Sensors are currently reporting unsafe conditions!"}, status=400)
@@ -333,7 +337,11 @@ def reset_safety(request):
         if profile.is_security_locked:
             # Check last 30 seconds of readings
             cutoff = timezone.now() - timedelta(seconds=30)
+<<<<<<< Updated upstream
             recent_readings = TelemetryReading.objects.filter(device_id__in=user_device_ids, timestamp__gte=cutoff)
+=======
+            recent_readings = TelemetryReading.objects.filter(device_ref__owner=user, timestamp__gte=cutoff)
+>>>>>>> Stashed changes
             
             if not recent_readings.exists():
                 return JsonResponse({"error": "No recent telemetry data received. Ensure sensors are online before resetting."}, status=400)
