@@ -19,3 +19,14 @@ class Device(models.Model):
     def __str__(self):
         owner_name = self.owner.username if self.owner else "Unassigned"
         return f"{self.name} ({self.mac_address}) | Role: {self.role} | Owner: {owner_name}"
+
+class Appliance(models.Model):
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='appliances')
+    channel = models.IntegerField()  # 1 to 4
+    name = models.CharField(max_length=100, default="Unnamed Channel")
+    type = models.CharField(max_length=50, default="Appliance")  # E.g., Lights, Appliance, HVAC, Samsung TV
+    active = models.BooleanField(default=False)
+    nominal_consumption = models.IntegerField(default=100) # Watts
+
+    def __str__(self):
+        return f"{self.name} (Channel {self.channel}) on {self.device.name}"

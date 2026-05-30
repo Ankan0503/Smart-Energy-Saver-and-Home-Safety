@@ -17,20 +17,26 @@ def readings_from_database(days: int = 30, user=None, device_id=None) -> pd.Data
     since = timezone.now() - timedelta(days=days)
     queryset = (
         TelemetryReading.objects
-        .select_related('device')
         .filter(timestamp__gte=since)
         .order_by('timestamp')
     )
 
+    from devices.models import Device
     if user is not None:
-        queryset = queryset.filter(device__owner=user, device__is_paired=True)
+        user_devices = Device.objects.filter(owner=user, is_paired=True)
+        device_ids = [str(d.id) for d in user_devices]
+        queryset = queryset.filter(device_id__in=device_ids)
     if device_id:
-        queryset = queryset.filter(device_id=device_id)
+        queryset = queryset.filter(device_id=str(device_id))
+
+    # Pre-fetch user devices to avoid N+1 query issue in Python
+    all_user_devices = {str(d.id): d for d in Device.objects.filter(owner=user)} if user else {}
 
     rows = []
     voltage = float(getattr(settings, 'RECOMMENDATION_DEFAULT_VOLTAGE', 230.0))
     for reading in queryset:
-        device_name = reading.device.name if reading.device else 'Unknown appliance'
+        dev = all_user_devices.get(str(reading.device_id))
+        device_name = dev.name if dev else 'Unknown appliance'
         rows.append({
             'timestamp': reading.timestamp,
             'appliance': device_name,

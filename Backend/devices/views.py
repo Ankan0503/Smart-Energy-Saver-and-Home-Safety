@@ -17,8 +17,22 @@ def get_user_devices(request):
     from django.utils import timezone
     devices = Device.objects.filter(owner=user, is_paired=True)
     device_list = []
+    
+    print("🔎 --- DATABASE DEVICE DEBUG ---")
+    print(f"Checking devices for User: {user.username}")
     for d in devices:
+        print(f"Device MAC: {d.mac_address} | Role: {d.role} | Name: {d.name} | Appliances Count: {d.appliances.count()}")
         is_active = (timezone.now() - d.last_seen).total_seconds() < 15
+        appliances_list = []
+        for app in d.appliances.all().order_by('channel'):
+            appliances_list.append({
+                "id": app.id,
+                "channel": app.channel,
+                "name": app.name,
+                "type": app.type,
+                "active": app.active,
+                "nominal_consumption": app.nominal_consumption
+            })
         device_list.append({
             "id": d.id,
             "mac_address": d.mac_address,
@@ -26,6 +40,7 @@ def get_user_devices(request):
             "role": d.role,
             "last_seen": d.last_seen.isoformat(),
             "is_active": is_active,
+            "appliances": appliances_list,
         })
     return JsonResponse({"devices": device_list})
 
@@ -78,6 +93,23 @@ def register_device(request):
         device.name = name
         device.role = role
         device.save()
+
+        # Auto-create 4 appliance channels for relay nodes
+        if device.role == 'relay':
+            from .models import Appliance
+            default_names = ["Living Room Lights", "Smart Charger", "Thermostat", "Media Unit"]
+            default_types = ["Lights", "Appliance", "HVAC", "Samsung TV"]
+            default_consumptions = [45, 1200, 800, 150]
+            for ch in range(1, 5):
+                Appliance.objects.get_or_create(
+                    device=device,
+                    channel=ch,
+                    defaults={
+                        "name": default_names[ch - 1],
+                        "type": default_types[ch - 1],
+                        "nominal_consumption": default_consumptions[ch - 1]
+                    }
+                )
 
         # Publish pairing message over MQTT to tell the Gateway to pair the device locally
         from paho.mqtt import publish as mqtt_publish
@@ -221,6 +253,11 @@ def unregister_device(request):
                 except Exception as mqtt_err:
                     print(f"Failed to publish MQTT unpair for gateway {d.mac_address}: {mqtt_err}")
             
+            # Delete associated telemetry readings manually first
+            from telemetry.models import TelemetryReading
+            device_ids_str = [str(d.id) for d in devices_to_delete]
+            TelemetryReading.objects.filter(device_id__in=device_ids_str).delete()
+
             # Delete all user's devices from the database
             del_res = devices_to_delete.delete()
             print("Django database delete response:", del_res)
@@ -245,6 +282,10 @@ def unregister_device(request):
             except Exception as mqtt_err:
                 print(f"Failed to publish MQTT unpair for {mac_address}: {mqtt_err}")
             
+            # Delete associated telemetry readings manually first
+            from telemetry.models import TelemetryReading
+            TelemetryReading.objects.filter(device_id=str(device.id)).delete()
+
             # Delete specific device from the database
             device.delete()
 
@@ -281,7 +322,10 @@ def reset_safety(request):
         from django.db.models import Q
 
         # Check if currently there is an active emergency in the very latest telemetry
-        latest_reading = TelemetryReading.objects.filter(device__owner=user).order_by('-timestamp').first()
+        from .models import Device
+        user_device_ids = [str(d.id) for d in Device.objects.filter(owner=user)]
+        
+        latest_reading = TelemetryReading.objects.filter(device_id__in=user_device_ids).order_by('-timestamp').first()
         if latest_reading:
             if latest_reading.gas > 3500 or latest_reading.flame == 0:
                 return JsonResponse({"error": "Cannot restore power. Sensors are currently reporting unsafe conditions!"}, status=400)
@@ -289,7 +333,7 @@ def reset_safety(request):
         if profile.is_security_locked:
             # Check last 30 seconds of readings
             cutoff = timezone.now() - timedelta(seconds=30)
-            recent_readings = TelemetryReading.objects.filter(device__owner=user, timestamp__gte=cutoff)
+            recent_readings = TelemetryReading.objects.filter(device_id__in=user_device_ids, timestamp__gte=cutoff)
             
             if not recent_readings.exists():
                 return JsonResponse({"error": "No recent telemetry data received. Ensure sensors are online before resetting."}, status=400)
@@ -401,5 +445,150 @@ def toggle_security_lock(request):
             "message": f"Mesh security state successfully set to {'LOCKED' if is_locked else 'UNLOCKED'}.",
             "is_security_locked": is_locked
         })
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def toggle_appliance(request):
+    try:
+        user = get_user_from_jwt_or_fallback(request)
+        if not user:
+            return JsonResponse({"error": "Unauthorized"}, status=401)
+        data = json.loads(request.body)
+        appliance_id = data.get("appliance_id")
+        hardcoded_id = data.get("hardcoded_id")
+        active = data.get("active")
+
+        if appliance_id is None and hardcoded_id is None:
+            return JsonResponse({"error": "appliance_id or hardcoded_id is required."}, status=400)
+        if active is None:
+            return JsonResponse({"error": "active state is required."}, status=400)
+
+        from .models import Appliance
+        appliance = None
+        if appliance_id:
+            try:
+                appliance = Appliance.objects.get(id=appliance_id, device__owner=user)
+            except Appliance.DoesNotExist:
+                return JsonResponse({"error": "Appliance not found or not owned by you."}, status=404)
+        else:
+            # Map hardcoded mock card IDs to channels 1-4 of the user's registered relay device
+            relay_device = Device.objects.filter(owner=user, role='relay', is_paired=True).first()
+            if not relay_device:
+                # Fallback to any paired device if no explicit relay is registered
+                relay_device = Device.objects.filter(owner=user, is_paired=True).first()
+            
+            if not relay_device:
+                return JsonResponse({"error": "No paired relay board found to route the command."}, status=404)
+
+            channel_map = {
+                'lr-lights': 1,
+                'kitchen-app': 2,
+                'hvac': 3,
+                'tv-unit': 4
+            }
+            channel = channel_map.get(hardcoded_id, 1)
+            
+            # Find or auto-create the appliance channel for this device
+            appliance, created = Appliance.objects.get_or_create(
+                device=relay_device,
+                channel=channel,
+                defaults={
+                    "name": f"Channel {channel} (Mock Fallback)",
+                    "type": "Appliance"
+                }
+            )
+
+        appliance.active = active
+        appliance.save()
+
+        # Send control command to relay node via MQTT
+        from paho.mqtt import publish as mqtt_publish
+        import os
+
+        MQTT_BROKER = os.getenv("MQTT_BROKER", "broker.hivemq.com")
+        MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
+        MQTT_USER = os.getenv("MQTT_USER")
+        MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
+
+        auth = None
+        if MQTT_USER and MQTT_PASSWORD:
+            auth = {'username': MQTT_USER, 'password': MQTT_PASSWORD}
+
+        tls = None
+        if MQTT_PORT == 8883:
+            import ssl
+            tls = {'ca_certs': None, 'cert_reqs': ssl.CERT_NONE, 'tls_version': ssl.PROTOCOL_TLS}
+
+        control_payload = {
+            "mac": appliance.device.mac_address,
+            "action": "CONTROL_RELAY",
+            "channel": appliance.channel,
+            "state": active
+        }
+
+        try:
+            mqtt_publish.single(
+                "aether/pairing/command",
+                payload=json.dumps(control_payload),
+                hostname=MQTT_BROKER,
+                port=MQTT_PORT,
+                auth=auth,
+                tls=tls
+            )
+            print(f"Published CONTROL_RELAY to MQTT: {control_payload}")
+        except Exception as mqtt_err:
+            print(f"Failed to publish MQTT control relay command: {mqtt_err}")
+            return JsonResponse({"error": "Failed to contact MQTT broker"}, status=500)
+
+        return JsonResponse({
+            "message": "Appliance state toggled and relay command sent.",
+            "appliance_id": appliance.id,
+            "active": appliance.active
+        })
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def update_appliance(request):
+    try:
+        user = get_user_from_jwt_or_fallback(request)
+        if not user:
+            return JsonResponse({"error": "Unauthorized"}, status=401)
+        data = json.loads(request.body)
+        appliance_id = data.get("appliance_id")
+        name = data.get("name")
+        type_ = data.get("type")
+        nominal_consumption = data.get("nominal_consumption")
+
+        if appliance_id is None:
+            return JsonResponse({"error": "appliance_id is required."}, status=400)
+
+        from .models import Appliance
+        try:
+            appliance = Appliance.objects.get(id=appliance_id, device__owner=user)
+        except Appliance.DoesNotExist:
+            return JsonResponse({"error": "Appliance not found or not owned by you."}, status=404)
+
+        if name is not None:
+            appliance.name = name
+        if type_ is not None:
+            appliance.type = type_
+        if nominal_consumption is not None:
+            appliance.nominal_consumption = nominal_consumption
+
+        appliance.save()
+
+        return JsonResponse({
+            "message": "Appliance configuration updated.",
+            "appliance_id": appliance.id,
+            "name": appliance.name,
+            "type": appliance.type,
+            "nominal_consumption": appliance.nominal_consumption
+        })
+
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)

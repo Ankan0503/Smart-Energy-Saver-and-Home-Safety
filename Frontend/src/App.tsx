@@ -59,6 +59,58 @@ const generateChartData = (range: string = 'Daily') => {
   }));
 };
 
+const mapApplianceToZone = (app: any) => {
+  let icon = Zap;
+  let color = 'text-olive';
+  if (app.type === 'Lights') {
+    icon = Lightbulb;
+    color = 'text-clay';
+  } else if (app.type === 'HVAC') {
+    icon = Wind;
+    color = 'text-sage';
+  } else if (app.type === 'Samsung TV' || app.type === 'Media Unit') {
+    icon = Activity;
+    color = 'text-ink';
+  }
+  return {
+    id: `app-socket-${app.id}`,
+    appliance_id: app.id,
+    name: app.name,
+    type: app.type,
+    icon: icon,
+    active: app.active,
+    status: app.active ? 'Active' : (app.type === 'HVAC' ? 'Standby' : 'Idle'),
+    nominalConsumption: app.nominal_consumption,
+    color: color,
+    dailyAvg: `${(app.nominal_consumption * 0.004).toFixed(1)} kWh`,
+    rules: [
+      { text: `Auto-off if unoccupied > 15m`, active: true }
+    ],
+    history: [app.active ? app.nominal_consumption : 0, 45, 20, 60, 45, 50, 45],
+    historyPrev: [25, 40, 30, 55, 40, 45, 40],
+    lastOptimized: 'Just now',
+    startTime: app.active ? Date.now() - 3600000 : null
+  };
+};
+
+interface Zone {
+  id: string;
+  appliance_id?: number;
+  name: string;
+  type: string;
+  icon: React.ComponentType<any>;
+  active: boolean;
+  status: string;
+  nominalConsumption: number;
+  color: string;
+  dailyAvg: string;
+  rules: { text: string; active: boolean }[];
+  history: number[];
+  historyPrev: number[];
+  lastOptimized: string;
+  startTime: number | null;
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState(() => {
     const view = new URLSearchParams(window.location.search).get('view');
@@ -153,7 +205,7 @@ export default function App() {
             is_security_locked: data.is_security_locked
           }));
 
-          // Fetch user devices to look up the Central Gateway's MAC Address
+          // Fetch user devices to look up the Central Gateway's MAC Address and load appliances
           try {
             const devRes = await fetch(`${apiUrl}/api/devices/`, { headers });
             if (devRes.ok) {
@@ -162,6 +214,17 @@ export default function App() {
               const gw = devData.devices.find((d: any) => d.role === 'gateway' || d.role === 'relay');
               if (gw) {
                 setGatewayMac(gw.mac_address);
+              }
+              const allAppliances: any[] = [];
+              devData.devices.forEach((d: any) => {
+                if (d.appliances && d.appliances.length > 0) {
+                  d.appliances.forEach((app: any) => {
+                    allAppliances.push(mapApplianceToZone(app));
+                  });
+                }
+              });
+              if (allAppliances.length > 0) {
+                setZones(allAppliances);
               }
             }
           } catch (devErr) {
@@ -184,7 +247,7 @@ export default function App() {
   useEffect(() => {
     checkAuth();
   }, []);
-  const [zones, setZones] = useState([
+  const [zones, setZones] = useState<Zone[]>([
     {
       id: 'lr-lights',
       name: 'Living Room',
@@ -203,12 +266,12 @@ export default function App() {
     },
     {
       id: 'kitchen-app',
-      name: 'Kitchen',
+      name: 'Smart Charger',
       type: 'Appliance',
       icon: Zap,
       active: true,
       status: 'Active',
-      nominalConsumption: 1200, // W
+      nominalConsumption: 15, // W (Typical charger draw)
       color: 'text-olive',
       dailyAvg: '4.8 kWh',
       rules: [{ text: 'Heater priority off during peak', active: true }, { text: 'Standby isolation', active: false }],
@@ -387,24 +450,62 @@ export default function App() {
     }));
   };
 
-  const toggleZone = (id: string, e?: React.MouseEvent) => {
+  const toggleZone = async (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setZones(prev => prev.map(zone => {
-      if (zone.id === id) {
-        const nextActive = !zone.active;
-        addToast(
-          `${zone.name} node ${nextActive ? 'activated' : 'isolated'}`,
-          nextActive ? Zap : Power
-        );
+    const zone = zones.find(z => z.id === id);
+    if (!zone) return;
+
+    const nextActive = !zone.active;
+    
+    // Optimistic local state update
+    setZones(prev => prev.map(z => {
+      if (z.id === id) {
         return {
-          ...zone,
+          ...z,
           active: nextActive,
-          status: nextActive ? 'Active' : (zone.type === 'HVAC' ? 'Standby' : 'Idle'),
+          status: nextActive ? 'Active' : (z.type === 'HVAC' ? 'Standby' : 'Idle'),
           startTime: nextActive ? Date.now() : null
         };
       }
-      return zone;
+      return z;
     }));
+
+    addToast(
+      `${zone.name} node ${nextActive ? 'activated' : 'isolated'}`,
+      nextActive ? Zap : Power
+    );
+
+    if (zone.appliance_id || zone.id) {
+      try {
+        const headers = authHeaders();
+        const res = await fetch(`${apiBaseUrl}/api/devices/appliance/toggle/`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ 
+            appliance_id: zone.appliance_id || null, 
+            hardcoded_id: zone.appliance_id ? null : zone.id,
+            active: nextActive 
+          })
+        });
+        if (!res.ok) {
+          // Revert on failure
+          setZones(prev => prev.map(z => {
+            if (z.id === id) {
+              return {
+                ...z,
+                active: zone.active,
+                status: zone.status,
+                startTime: zone.startTime
+              };
+            }
+            return z;
+          }));
+          addToast("Failed to communicate with relay node.", ShieldAlert);
+        }
+      } catch (err) {
+        console.error("Error toggling backend appliance:", err);
+      }
+    }
   };
 
   useAudioAlert(!!showOverlay && !isMuted);

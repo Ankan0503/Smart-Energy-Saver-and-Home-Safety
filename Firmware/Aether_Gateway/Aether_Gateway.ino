@@ -122,6 +122,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     String action = doc["action"];
     String targetMac = doc["mac"];
 
+    // Forwarding block: If target MAC is NOT the Gateway, broadcast it to Subnodes over ESP-NOW
+    if (targetMac != "" && !targetMac.equalsIgnoreCase(getMacAddress())) {
+        uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        esp_now_send(broadcastAddress, (uint8_t *) cleanPayload, strlen(cleanPayload));
+        Serial.println("Forwarded command to Sub-Node over ESP-NOW: " + String(cleanPayload));
+        return;
+    }
+
     if (action == "PAIR") {
         String newMeshId = doc["mesh_id"];
         String newMeshKey = doc["mesh_key"];
@@ -327,7 +335,11 @@ void setup() {
     }
 
     // Setup secure MQTT
+    #ifdef ROOT_CA
+    espClient.setCACert(ROOT_CA);
+    #else
     espClient.setInsecure();
+    #endif
     mqttClient.setServer(mqtt_server, mqtt_port);
     mqttClient.setCallback(mqttCallback);
 }

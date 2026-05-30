@@ -39,8 +39,8 @@ def get_latest_telemetry(request):
         latest_readings = []
         for dev in user_devices:
             try:
-                # Find the latest reading for each paired device
-                r = TelemetryReading.objects.filter(device=dev).latest('id')
+                # Find the latest reading for each paired device (using string comparison for device_id)
+                r = TelemetryReading.objects.filter(device_id=str(dev.id)).latest('id')
                 
                 # Only consider it active if seen in the last 15 seconds
                 from django.utils import timezone
@@ -52,7 +52,8 @@ def get_latest_telemetry(request):
         if not latest_readings:
             # Fallback to the absolute latest reading if no active ones in the last 15 seconds
             try:
-                latest = TelemetryReading.objects.filter(device__in=user_devices).latest('id')
+                device_ids = [str(d.id) for d in user_devices]
+                latest = TelemetryReading.objects.filter(device_id__in=device_ids).latest('id')
                 latest_readings = [latest]
             except TelemetryReading.DoesNotExist:
                 return JsonResponse({

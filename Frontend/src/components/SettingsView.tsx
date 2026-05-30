@@ -74,6 +74,43 @@ export const SettingsView = ({
   const [gatewayCheckboxChecked, setGatewayCheckboxChecked] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Appliance editing states
+  const [editingApplianceId, setEditingApplianceId] = useState<number | null>(null);
+  const [editAppName, setEditAppName] = useState('');
+  const [editAppType, setEditAppType] = useState('Appliance');
+  const [editAppConsumption, setEditAppConsumption] = useState(100);
+  const [isSavingAppliance, setIsSavingAppliance] = useState(false);
+
+  const handleSaveAppliance = async (appId: number) => {
+    setIsSavingAppliance(true);
+    try {
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch(`${API_URL}/api/devices/appliance/update/`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          appliance_id: appId,
+          name: editAppName,
+          type: editAppType,
+          nominal_consumption: editAppConsumption
+        })
+      });
+      if (res.ok) {
+        setEditingApplianceId(null);
+        fetchDevices();
+      } else {
+        alert("Failed to save socket configuration.");
+      }
+    } catch (e) {
+      console.error("Save appliance failed:", e);
+    } finally {
+      setIsSavingAppliance(false);
+    }
+  };
+
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
   const [pushStatus, setPushStatus] = useState<PushStatus>({
     supported: false,
@@ -610,6 +647,7 @@ export const SettingsView = ({
                   >
                     <option value="sensor">Sensor Node</option>
                     <option value="relay">Relay Node</option>
+                    <option value="gateway">Central Gateway</option>
                   </select>
                 </div>
 
@@ -662,46 +700,126 @@ export const SettingsView = ({
                 </thead>
                 <tbody className="divide-y divide-olive/5 text-[10px] font-bold text-ink">
                   {devices.map((dev) => (
-                    <tr key={dev.mac_address} className="hover:bg-white/50 transition-colors">
-                      <td className="p-4 pl-6 italic">{dev.name}</td>
-                      <td className="p-4 font-mono font-medium">{dev.mac_address}</td>
-                      <td className="p-4">
-                        <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-wider border ${
-                          dev.role === 'gateway' ? 'bg-olive/10 text-olive border-olive/10' :
-                          dev.role === 'relay' ? 'bg-clay/10 text-clay border-clay/10' :
-                          'bg-sage/10 text-sage border-sage/10'
-                        }`}>
-                          {dev.role}
-                        </span>
-                      </td>
-                      <td className="p-4 text-center">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-wider border transition-all ${
-                          dev.is_active 
-                            ? 'bg-sage/10 text-sage border-sage/20 shadow-sm shadow-sage/5 animate-pulse' 
-                            : 'bg-danger/5 text-danger/60 border-danger/10'
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${dev.is_active ? 'bg-sage' : 'bg-danger/40'}`} />
-                          {dev.is_active ? 'Active' : 'Offline'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right pr-6">
-                        <button 
-                          onClick={() => {
-                            setDeviceToDelete(dev);
-                            setDeleteConfirmText('');
-                            setGatewayCheckboxChecked(false);
-                          }}
-                          className={`p-2 rounded-lg transition-all ${
-                            dev.role === 'gateway' 
-                              ? 'text-danger hover:bg-danger/10 border border-danger/25 shadow-sm' 
-                              : 'text-ink/20 hover:text-danger hover:bg-danger/5'
-                          }`}
-                          title={dev.role === 'gateway' ? "Deregister Mesh & Gateway" : "Remove from Mesh"}
-                        >
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
+                    <React.Fragment key={dev.mac_address}>
+                      <tr className="hover:bg-white/50 transition-colors">
+                        <td className="p-4 pl-6 italic">{dev.name}</td>
+                        <td className="p-4 font-mono font-medium">{dev.mac_address}</td>
+                        <td className="p-4">
+                          <span className={`px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-wider border ${
+                            dev.role === 'gateway' ? 'bg-olive/10 text-olive border-olive/10' :
+                            dev.role === 'relay' ? 'bg-clay/10 text-clay border-clay/10' :
+                            'bg-sage/10 text-sage border-sage/10'
+                          }`}>
+                            {dev.role}
+                          </span>
+                        </td>
+                        <td className="p-4 text-center">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-wider border transition-all ${
+                            dev.is_active 
+                              ? 'bg-sage/10 text-sage border-sage/20 shadow-sm shadow-sage/5 animate-pulse' 
+                              : 'bg-danger/5 text-danger/60 border-danger/10'
+                          }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${dev.is_active ? 'bg-sage' : 'bg-danger/40'}`} />
+                            {dev.is_active ? 'Active' : 'Offline'}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right pr-6">
+                          <button 
+                            onClick={() => {
+                              setDeviceToDelete(dev);
+                              setDeleteConfirmText('');
+                              setGatewayCheckboxChecked(false);
+                            }}
+                            className={`p-2 rounded-lg transition-all ${
+                              dev.role === 'gateway' 
+                                ? 'text-danger hover:bg-danger/10 border border-danger/25 shadow-sm' 
+                                : 'text-ink/20 hover:text-danger hover:bg-danger/5'
+                            }`}
+                            title={dev.role === 'gateway' ? "Deregister Mesh & Gateway" : "Remove from Mesh"}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </td>
+                      </tr>
+                      {dev.role === 'relay' && dev.appliances && dev.appliances.length > 0 && (
+                        <tr className="bg-bg-card/25 border-b border-olive/5">
+                          <td colSpan={5} className="p-6 pl-10 pr-10">
+                            <div className="text-[9px] font-black text-olive/40 uppercase tracking-widest mb-3">Socket Configurations</div>
+                            <div className="space-y-4">
+                              {dev.appliances.map((app: any) => (
+                                <div key={app.id} className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 bg-white/70 border border-olive/5 rounded-2xl">
+                                  <div className="flex-1">
+                                    {editingApplianceId === app.id ? (
+                                      <div className="flex flex-wrap gap-3 items-center w-full">
+                                        <input
+                                          type="text"
+                                          value={editAppName}
+                                          onChange={(e) => setEditAppName(e.target.value)}
+                                          className="px-3 py-1.5 bg-bg-card/25 border border-olive/10 rounded-xl text-[10px] font-bold text-ink focus:outline-none focus:border-olive flex-1 min-w-[150px]"
+                                          placeholder="Socket Name"
+                                        />
+                                        <select
+                                          value={editAppType}
+                                          onChange={(e) => setEditAppType(e.target.value)}
+                                          className="px-2 py-1.5 bg-bg-card/25 border border-olive/10 rounded-xl text-[10px] font-bold text-ink focus:outline-none"
+                                        >
+                                          <option value="Lights">Lights</option>
+                                          <option value="Appliance">Appliance</option>
+                                          <option value="HVAC">HVAC</option>
+                                          <option value="Samsung TV">Samsung TV</option>
+                                        </select>
+                                        <input
+                                          type="number"
+                                          value={editAppConsumption}
+                                          onChange={(e) => setEditAppConsumption(Number(e.target.value))}
+                                          className="px-3 py-1.5 bg-bg-card/25 border border-olive/10 rounded-xl text-[10px] font-bold text-ink focus:outline-none focus:border-olive w-20"
+                                          placeholder="W"
+                                        />
+                                        <div className="flex gap-2">
+                                          <button
+                                            onClick={() => handleSaveAppliance(app.id)}
+                                            disabled={isSavingAppliance}
+                                            className="px-4 py-1.5 bg-olive text-white rounded-xl hover:bg-olive/90 transition-all text-[9px] font-black uppercase tracking-wider"
+                                          >
+                                            Save
+                                          </button>
+                                          <button
+                                            onClick={() => setEditingApplianceId(null)}
+                                            className="px-4 py-1.5 border border-olive/10 text-ink/40 rounded-xl hover:bg-bg-card transition-all text-[9px] font-black uppercase tracking-wider"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center justify-between w-full">
+                                        <div>
+                                          <span className="text-[9px] text-olive font-black tracking-wider uppercase bg-olive/10 px-2 py-0.5 rounded-full mr-3">Channel {app.channel}</span>
+                                          <span className="font-bold text-ink italic mr-4">{app.name}</span>
+                                          <span className="text-ink/40 text-[9px] tracking-wide uppercase mr-4">{app.type}</span>
+                                          <span className="text-ink/30 text-[9px] font-mono font-medium">{app.nominal_consumption}W</span>
+                                        </div>
+                                        <button
+                                          onClick={() => {
+                                            setEditingApplianceId(app.id);
+                                            setEditAppName(app.name);
+                                            setEditAppType(app.type);
+                                            setEditAppConsumption(app.nominal_consumption);
+                                          }}
+                                          className="px-4 py-1.5 border border-olive/10 text-olive hover:bg-olive/5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all"
+                                        >
+                                          Configure
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>

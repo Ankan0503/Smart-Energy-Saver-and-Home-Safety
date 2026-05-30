@@ -62,7 +62,7 @@ def on_message(client, userdata, msg):
                 device.save() # Auto-updates last_seen
             
             TelemetryReading.objects.create(
-                device=device,
+                device_id=str(device.id) if device else None,
                 gas=gas,
                 current=current,
                 pir=pir,
