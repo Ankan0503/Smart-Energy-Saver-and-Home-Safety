@@ -8,9 +8,14 @@ class TelemetryReading(models.Model):
     current = models.FloatField()
     power = models.FloatField(default=0.0)
     pir = models.IntegerField(default=1)
-    flame = models.IntegerField()
-    status = models.CharField(max_length=50)
+    flame = models.IntegerField(default=1)
+    status = models.CharField(max_length=50, default="SAFE")
     timestamp = models.DateTimeField(auto_now_add=True)
+    c1 = models.FloatField(default=0.0)
+    c2 = models.FloatField(default=0.0)
+    c3 = models.FloatField(default=0.0)
+    c4 = models.FloatField(default=0.0)
+    appliance_id = models.IntegerField(null=True, blank=True, db_column='appliance_id')
 
     @property
     def device(self):
@@ -22,6 +27,16 @@ class TelemetryReading(models.Model):
                 except Device.DoesNotExist:
                     self._device_cache = None
         return self._device_cache
+
+    @property
+    def appliance(self):
+        if not hasattr(self, '_appliance_cache'):
+            from devices.models import Appliance
+            try:
+                self._appliance_cache = Appliance.objects.get(id=int(self.appliance_id)) if self.appliance_id else None
+            except (Appliance.DoesNotExist, ValueError):
+                self._appliance_cache = None
+        return self._appliance_cache
 
     def __str__(self):
         device_name = self.device_ref.name if self.device_ref else self.device_id
