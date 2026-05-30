@@ -29,7 +29,7 @@ String meshKey = "";
 String deviceName = "";
 
 unsigned long lastBroadcast = 0;
-const unsigned long broadcastInterval = 2000; // Telemetry reports every 2 seconds
+const unsigned long broadcastInterval = 250; // Telemetry reports every 2 seconds
 unsigned long lastTripSent = 0;
 bool wasEmergency = false;
 int currentChannel = 1;

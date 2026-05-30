@@ -108,8 +108,10 @@ ELECTRICITY_RATE_PER_KWH = float(os.getenv('ELECTRICITY_RATE_PER_KWH', 8.0))
 RECOMMENDATION_CURRENCY = os.getenv('RECOMMENDATION_CURRENCY', 'INR')
 STANDBY_CURRENT_THRESHOLD = float(os.getenv('STANDBY_CURRENT_THRESHOLD', 0.05))
 STANDBY_POWER_THRESHOLD_WATTS = float(os.getenv('STANDBY_POWER_THRESHOLD_WATTS', 8.0))
+OCCUPANCY_POWER_THRESHOLD_WATTS = float(os.getenv('OCCUPANCY_POWER_THRESHOLD_WATTS', 15.0))
 ABNORMAL_USAGE_TREND_PERCENT = float(os.getenv('ABNORMAL_USAGE_TREND_PERCENT', 25.0))
 MIN_RECOMMENDATION_SAMPLES = int(os.getenv('MIN_RECOMMENDATION_SAMPLES', 12))
+MAX_ENERGY_RECOMMENDATIONS = int(os.getenv('MAX_ENERGY_RECOMMENDATIONS', 12))
 
 # Real-time gas/fire hazard risk scoring defaults. These mirror the firmware's
 # active-low flame sensor convention and MQ2 danger threshold while staying tunable.

@@ -23,11 +23,18 @@ analyze richer gateway history without requiring a schema change.
       "appliance": "Living room fan",
       "current": 0.18,
       "power_watts": 41.4,
-      "pir": 0
+      "pir": 0,
+      "duration_seconds": 60,
+      "state": "idle"
     }
   ]
 }
 ```
+
+Accepted history fields include `timestamp`, `appliance`, `current`,
+`power_watts`, `energy_kwh`, `duration_seconds`, `pir`, `occupied`,
+`occupancy`, and `state`. `GET` derives appliance names from paired devices and
+uses `TelemetryReading.current` plus the configured voltage for power estimates.
 
 ## Detection Types
 
@@ -45,6 +52,8 @@ ELECTRICITY_RATE_PER_KWH=8
 RECOMMENDATION_CURRENCY=INR
 STANDBY_CURRENT_THRESHOLD=0.05
 STANDBY_POWER_THRESHOLD_WATTS=8
+OCCUPANCY_POWER_THRESHOLD_WATTS=15
 ABNORMAL_USAGE_TREND_PERCENT=25
 MIN_RECOMMENDATION_SAMPLES=12
+MAX_ENERGY_RECOMMENDATIONS=12
 ```

@@ -22,6 +22,15 @@ def _positive_int(value, default, maximum):
     return max(1, min(parsed, maximum))
 
 
+def _readings_from_request(payload):
+    readings = payload.get('readings', [])
+    if not isinstance(readings, list):
+        raise ValueError('`readings` must be an array.')
+    if len(readings) > 20000:
+        raise ValueError('`readings` may contain at most 20000 samples.')
+    return readings
+
+
 @csrf_exempt
 @require_http_methods(['GET', 'POST'])
 def energy_recommendations(request):
@@ -39,7 +48,7 @@ def energy_recommendations(request):
 
         if request.method == 'POST':
             payload = json.loads(request.body.decode('utf-8') or '{}')
-            history = readings_from_payload(payload.get('readings', []))
+            history = readings_from_payload(_readings_from_request(payload))
             days = _positive_int(payload.get('days', days), default=days, maximum=180)
         else:
             payload = {}
@@ -47,6 +56,7 @@ def energy_recommendations(request):
 
         result = EnergyRecommendationEngine().generate(history)
         result['metadata'] = {
+            **result.get('metadata', {}),
             'source': 'payload' if request.method == 'POST' else 'database',
             'days_requested': days,
             'device_id': device_id,
@@ -55,6 +65,8 @@ def energy_recommendations(request):
         return JsonResponse(result)
     except json.JSONDecodeError:
         return JsonResponse({'error': 'Request body must be valid JSON.'}, status=400)
+    except ValueError as exc:
+        return JsonResponse({'error': str(exc)}, status=400)
     except Exception as exc:
         logger.exception('Energy recommendation generation failed: %s', exc)
         return JsonResponse({'error': 'Unable to generate energy recommendations.'}, status=500)
