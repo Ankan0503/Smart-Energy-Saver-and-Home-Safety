@@ -5,7 +5,7 @@ from datetime import datetime
 from django.conf import settings
 from django.utils import timezone
 
-from anomaly.ml.appliance_state import predict_log_and_act
+from anomaly.ml.socket_state import predict_socket_log_and_act
 from devices.models import Device
 
 from .models import TelemetryReading
@@ -66,13 +66,13 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
         device.name = f"Unassigned {name}"
     device.save()
 
-    # Auto-create 4 default appliance channels for relay nodes if missing
+    # Auto-create 3 default appliance sockets for relay nodes if missing.
     if device.role == 'relay':
         from devices.models import Appliance
-        default_names = ["Living Room Lights", "Smart Charger", "Thermostat", "Media Unit"]
-        default_types = ["Lights", "Appliance", "HVAC", "Samsung TV"]
-        default_consumptions = [45, 1200, 800, 150]
-        for ch in range(1, 5):
+        default_names = ["Socket 1", "Socket 2", "Socket 3"]
+        default_types = ["Appliance", "Appliance", "Appliance"]
+        default_consumptions = [100, 100, 100]
+        for ch in range(1, 4):
             Appliance.objects.get_or_create(
                 device=device,
                 channel=ch,
@@ -105,6 +105,7 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
         device_id=mac,
         appliance_id=None,
         channel=None,
+        socket_id=None,
         gas=_int_value(data.get('gas'), 0),
         current=current,
         power=power,
@@ -122,23 +123,26 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
         reading.timestamp = parsed
         reading.save(update_fields=['timestamp'])
 
-    # 2. Save individual telemetry readings for each appliance on the relay node
+    # 2. Save individual telemetry readings for each socket on the relay node.
+    socket_prediction = None
     if device.role == 'relay':
         from devices.models import Appliance
-        appliances = Appliance.objects.filter(device=device)
+        appliances = Appliance.objects.filter(device=device, channel__in=[1, 2, 3])
         channel_currents = {
             1: c1,
             2: c2,
-            3: c3,
-            4: c4
+            3: c3
         }
         for app in appliances:
             app_current = channel_currents.get(app.channel, 0.0)
             relay_state_key = f'r{app.channel}'
+            relay_is_on = app.active
             if relay_state_key in data:
-                app.active = _bool_value(data.get(relay_state_key), app.active)
+                relay_is_on = _bool_value(data.get(relay_state_key), app.active)
+                app.active = relay_is_on
                 app.save(update_fields=['active'])
             elif app_current > 0.0 and not app.active:
+                relay_is_on = True
                 app.active = True
                 app.save(update_fields=['active'])
 
@@ -147,12 +151,13 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
                 device_id=mac,
                 appliance_id=app.id,
                 channel=app.channel,
+                socket_id=app.channel,
                 gas=_int_value(data.get('gas'), 0),
                 current=app_current,  # Mapped individual current
                 power=app_current * voltage,
                 pir=1 if _int_value(data.get('pir'), 1) else 0,
                 flame=_int_value(data.get('flame'), 1),
-                status=str(data.get('status') or 'SAFE')[:50],
+                status=('ON' if relay_is_on else 'OFF'),
                 c1=c1,
                 c2=c2,
                 c3=c3,
@@ -162,8 +167,7 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
                 app_reading.timestamp = parsed
                 app_reading.save(update_fields=['timestamp'])
             
-            # Run prediction and auto-cutoff logic for each individual appliance channel
-            predict_log_and_act(app_reading)
+            if relay_is_on:
+                socket_prediction = predict_socket_log_and_act(mac, app.channel)
 
-    prediction = predict_log_and_act(reading)
-    return reading, prediction
+    return reading, socket_prediction

@@ -17,6 +17,7 @@ class TelemetryReading(models.Model):
     c4 = models.FloatField(default=0.0)
     appliance_id = models.IntegerField(null=True, blank=True, db_column='appliance_id')
     channel = models.PositiveSmallIntegerField(null=True, blank=True, db_index=True)
+    socket_id = models.PositiveSmallIntegerField(null=True, blank=True, db_index=True)
 
     @property
     def device(self):
@@ -75,4 +76,32 @@ class ApplianceStatePrediction(models.Model):
             models.Index(fields=['device_id', '-timestamp']),
             models.Index(fields=['channel_key', '-timestamp'], name='telemetry_a_channel_665f0a_idx'),
             models.Index(fields=['predicted_state', '-timestamp']),
+        ]
+
+
+class MLPrediction(models.Model):
+    STATE_ACTIVE = 'ACTIVE'
+    STATE_CHARGING_COMPLETE = 'CHARGING_COMPLETE'
+    STATE_IDLE = 'IDLE'
+    STATE_EMPTY_SOCKET = 'EMPTY_SOCKET'
+    STATE_CHOICES = [
+        (STATE_ACTIVE, 'Active'),
+        (STATE_CHARGING_COMPLETE, 'Charging Complete'),
+        (STATE_IDLE, 'Idle'),
+        (STATE_EMPTY_SOCKET, 'Empty Socket'),
+    ]
+
+    device_id = models.CharField(max_length=64, db_index=True)
+    socket_id = models.PositiveSmallIntegerField(db_index=True)
+    predicted_state = models.CharField(max_length=32, choices=STATE_CHOICES, db_index=True)
+    confidence = models.FloatField(default=0.0)
+    action_taken = models.CharField(max_length=128, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = 'ml_predictions'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['device_id', 'socket_id', '-created_at'], name='ml_pred_socket_latest_idx'),
+            models.Index(fields=['predicted_state', '-created_at'], name='ml_pred_state_time_idx'),
         ]

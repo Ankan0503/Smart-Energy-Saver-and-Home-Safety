@@ -94,13 +94,13 @@ def register_device(request):
         device.role = role
         device.save()
 
-        # Auto-create 4 appliance channels for relay nodes
+        # Auto-create 3 appliance sockets for relay nodes.
         if device.role == 'relay':
             from .models import Appliance
-            default_names = ["Living Room Lights", "Smart Charger", "Thermostat", "Media Unit"]
-            default_types = ["Lights", "Appliance", "HVAC", "Samsung TV"]
-            default_consumptions = [45, 1200, 800, 150]
-            for ch in range(1, 5):
+            default_names = ["Socket 1", "Socket 2", "Socket 3"]
+            default_types = ["Appliance", "Appliance", "Appliance"]
+            default_consumptions = [100, 100, 100]
+            for ch in range(1, 4):
                 Appliance.objects.get_or_create(
                     device=device,
                     channel=ch,
@@ -483,7 +483,7 @@ def toggle_appliance(request):
             except Appliance.DoesNotExist:
                 return JsonResponse({"error": "Appliance not found or not owned by you."}, status=404)
         else:
-            # Map hardcoded mock card IDs to channels 1-4 of the user's registered relay device
+            # Map hardcoded mock card IDs to sockets 1-3 of the user's registered relay device.
             relay_device = Device.objects.filter(owner=user, role='relay', is_paired=True).first()
             if not relay_device:
                 # Fallback to any paired device if no explicit relay is registered
@@ -496,7 +496,7 @@ def toggle_appliance(request):
                 'lr-lights': 1,
                 'kitchen-app': 2,
                 'hvac': 3,
-                'tv-unit': 4
+                'tv-unit': 3
             }
             channel = channel_map.get(hardcoded_id, 1)
             
@@ -512,13 +512,6 @@ def toggle_appliance(request):
 
         appliance.active = active
         appliance.save()
-
-        # Update in-memory activation time for cutoff tracking
-        from anomaly.ml.appliance_state import record_activation, clear_activation
-        if active:
-            record_activation(appliance.id)
-        else:
-            clear_activation(appliance.id)
 
         # Send control command to relay node via MQTT
         from paho.mqtt import publish as mqtt_publish

@@ -16,9 +16,11 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from telemetry.views import socket_status
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/socket-status/', socket_status, name='api_socket_status'),
     path('api/telemetry/', include('telemetry.urls')),
     path('api/accounts/', include('accounts.urls')),
     path('api/devices/', include('devices.urls')),

@@ -1,6 +1,9 @@
 from django.http import JsonResponse
 from django.db.models import Q
-from .models import TelemetryReading
+from django.views.decorators.http import require_GET
+
+from anomaly.ml.socket_state import predict_socket_state
+from .models import MLPrediction, TelemetryReading
 
 def get_latest_telemetry(request):
     from django.db import close_old_connections
@@ -128,6 +131,7 @@ def debug_telemetry(request):
             "id": r.id,
             "device_id": r.device_id,
             "appliance_id": r.appliance_id,
+            "socket_id": r.socket_id,
             "appliance_name": r.appliance.name if r.appliance else "Global",
             "current": r.current,
             "power": r.power,
@@ -141,3 +145,32 @@ def debug_telemetry(request):
             "timestamp": r.timestamp.isoformat()
         })
     return JsonResponse({"readings": data})
+
+
+@require_GET
+def socket_status(request):
+    device_id = request.GET.get('device_id')
+    socket_id = request.GET.get('socket_id')
+
+    if device_id and socket_id:
+        try:
+            status = predict_socket_state(device_id, int(socket_id))
+            return JsonResponse({
+                'device_id': status['device_id'],
+                'socket_id': status['socket_id'],
+                'state': status['state'],
+                'confidence': status['confidence'],
+            })
+        except (ValueError, TelemetryReading.DoesNotExist) as exc:
+            return JsonResponse({'error': str(exc)}, status=404)
+
+    latest = MLPrediction.objects.order_by('-created_at').first()
+    if latest is None:
+        return JsonResponse({'error': 'No socket predictions are available yet.'}, status=404)
+
+    return JsonResponse({
+        'device_id': latest.device_id,
+        'socket_id': latest.socket_id,
+        'state': latest.predicted_state,
+        'confidence': round(float(latest.confidence), 2),
+    })
