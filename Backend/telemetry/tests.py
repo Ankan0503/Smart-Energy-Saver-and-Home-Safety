@@ -52,6 +52,7 @@ class TelemetryIngestionTests(TestCase):
             'r1': 1,
             'r2': 0,
             'r3': 1,
+            'r4': 1,
             'gas': 0,
             'flame': 1,
         })
@@ -63,6 +64,8 @@ class TelemetryIngestionTests(TestCase):
         self.assertEqual(socket_rows.count(), 3)
         self.assertEqual([row.socket_id for row in socket_rows], [1, 2, 3])
         self.assertEqual(socket_rows.get(socket_id=2).status, 'OFF')
+        self.assertEqual(socket_rows.get(socket_id=3).channel, 4)
+        self.assertAlmostEqual(socket_rows.get(socket_id=3).current, 0.40)
         self.assertEqual(MLPrediction.objects.filter(device_id='7C:9E:BD:AA:00:02').count(), 2)
 
     @override_settings(

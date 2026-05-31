@@ -11,6 +11,13 @@ from devices.models import Device
 from .models import TelemetryReading
 
 
+SOCKET_HARDWARE_MAP = {
+    1: {'current_key': 'c1', 'relay_key': 'r1', 'hardware_channel': 1},
+    2: {'current_key': 'c2', 'relay_key': 'r2', 'hardware_channel': 2},
+    3: {'current_key': 'c4', 'relay_key': 'r4', 'hardware_channel': 4},
+}
+
+
 def _float_value(value, default=0.0):
     try:
         return float(value)
@@ -91,9 +98,9 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
     c3 = _float_value(data.get("c3"), 0.0)
     c4 = _float_value(data.get("c4"), 0.0)
 
-    # Recalculate combined current and power from all four relay sockets.
+    # Channel 3 pins are unused on this hardware, so logical socket 3 uses c4/r4.
     if device.role == 'relay':
-        current = c1 + c2 + c3 + c4
+        current = c1 + c2 + c4
     else:
         current = _float_value(data.get('current'), 0.0)
         
@@ -127,15 +134,11 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
     socket_prediction = None
     if device.role == 'relay':
         from devices.models import Appliance
-        appliances = Appliance.objects.filter(device=device, channel__in=[1, 2, 3])
-        channel_currents = {
-            1: c1,
-            2: c2,
-            3: c3
-        }
+        appliances = Appliance.objects.filter(device=device, channel__in=SOCKET_HARDWARE_MAP.keys())
         for app in appliances:
-            app_current = channel_currents.get(app.channel, 0.0)
-            relay_state_key = f'r{app.channel}'
+            socket_config = SOCKET_HARDWARE_MAP[app.channel]
+            app_current = _float_value(data.get(socket_config['current_key']), 0.0)
+            relay_state_key = socket_config['relay_key']
             relay_is_on = app.active
             if relay_state_key in data:
                 relay_is_on = _bool_value(data.get(relay_state_key), app.active)
@@ -150,7 +153,7 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
                 device_ref=device,
                 device_id=mac,
                 appliance_id=app.id,
-                channel=app.channel,
+                channel=socket_config['hardware_channel'],
                 socket_id=app.channel,
                 gas=_int_value(data.get('gas'), 0),
                 current=app_current,  # Mapped individual current

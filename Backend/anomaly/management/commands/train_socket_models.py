@@ -4,13 +4,14 @@ import joblib
 import pandas as pd
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models import F, Q
+from django.db.models import Q
 from django.utils import timezone
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report
 
 from anomaly.ml.socket_state import (
     FEATURE_COLUMNS,
+    SOCKET_TO_RELAY_CHANNEL,
     STATE_ACTIVE,
     STATE_CHARGING_COMPLETE,
     STATE_EMPTY_SOCKET,
@@ -23,13 +24,31 @@ from telemetry.models import TelemetryReading
 
 
 SOCKET_IDS = [1, 2, 3]
+RELAY_CHANNEL_TO_SOCKET = {relay: socket for socket, relay in SOCKET_TO_RELAY_CHANNEL.items()}
 
 
 def _backfill_socket_ids() -> int:
-    return TelemetryReading.objects.filter(
-        socket_id__isnull=True,
-        channel__in=SOCKET_IDS,
-    ).update(socket_id=F('channel'))
+    updated = 0
+    for hardware_channel, socket_id in RELAY_CHANNEL_TO_SOCKET.items():
+        updated += TelemetryReading.objects.filter(
+            socket_id__isnull=True,
+            channel=hardware_channel,
+        ).update(socket_id=socket_id)
+    return updated
+
+
+def _effective_socket_id(row) -> int | None:
+    channel = row.get('channel')
+    if pd.notna(channel):
+        hardware_socket = RELAY_CHANNEL_TO_SOCKET.get(int(channel))
+        if hardware_socket is None:
+            return None
+        return hardware_socket
+    socket_id = row.get('socket_id')
+    if pd.isna(socket_id):
+        return None
+    socket_id = int(socket_id)
+    return socket_id if socket_id in SOCKET_IDS else None
 
 
 def _label_group(frame: pd.DataFrame) -> pd.Series:
@@ -98,7 +117,7 @@ class Command(BaseCommand):
         queryset = (
             TelemetryReading.objects
             .filter(
-                Q(socket_id__in=SOCKET_IDS) | Q(socket_id__isnull=True, channel__in=SOCKET_IDS),
+                Q(socket_id__in=SOCKET_IDS) | Q(socket_id__isnull=True, channel__in=RELAY_CHANNEL_TO_SOCKET.keys()),
                 timestamp__gte=since,
             )
             .exclude(status__iexact='OFF')
@@ -112,7 +131,11 @@ class Command(BaseCommand):
         trained = []
         skipped = []
         all_rows = pd.DataFrame(rows)
-        all_rows['effective_socket_id'] = all_rows['socket_id'].fillna(all_rows['channel']).astype(int)
+        all_rows['effective_socket_id'] = all_rows.apply(_effective_socket_id, axis=1)
+        all_rows = all_rows[all_rows['effective_socket_id'].notna()].copy()
+        all_rows['effective_socket_id'] = all_rows['effective_socket_id'].astype(int)
+        if all_rows.empty:
+            raise CommandError('No telemetry rows matched the active socket hardware mapping.')
         for (device_id, socket_id), group in all_rows.groupby(['device_id', 'effective_socket_id']):
             readings = [
                 TelemetryReading(

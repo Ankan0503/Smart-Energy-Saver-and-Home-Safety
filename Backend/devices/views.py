@@ -4,6 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.contrib.auth.models import User
 from .models import Device
+from anomaly.ml.socket_state import relay_channel_for_socket
 
 def get_user_from_jwt_or_fallback(request):
     from accounts.views import get_user_from_jwt
@@ -534,7 +535,7 @@ def toggle_appliance(request):
         control_payload = {
             "mac": appliance.device.mac_address,
             "action": "CONTROL_RELAY",
-            "channel": appliance.channel,
+            "channel": relay_channel_for_socket(appliance.channel),
             "state": active
         }
 

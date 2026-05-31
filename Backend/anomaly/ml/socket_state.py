@@ -23,6 +23,11 @@ STATE_CHARGING_COMPLETE = 'CHARGING_COMPLETE'
 STATE_IDLE = 'IDLE'
 STATE_EMPTY_SOCKET = 'EMPTY_SOCKET'
 STATE_ORDER = [STATE_ACTIVE, STATE_CHARGING_COMPLETE, STATE_IDLE, STATE_EMPTY_SOCKET]
+SOCKET_TO_RELAY_CHANNEL = {
+    1: 1,
+    2: 2,
+    3: 4,
+}
 FEATURE_COLUMNS = [
     'current',
     'power',
@@ -42,9 +47,13 @@ class SocketModelNotReady(RuntimeError):
 
 def normalize_socket_id(value: Any) -> int:
     socket_id = int(value)
-    if socket_id not in {1, 2, 3}:
+    if socket_id not in SOCKET_TO_RELAY_CHANNEL:
         raise ValueError('socket_id must be one of 1, 2, or 3.')
     return socket_id
+
+
+def relay_channel_for_socket(socket_id: int) -> int:
+    return SOCKET_TO_RELAY_CHANNEL[normalize_socket_id(socket_id)]
 
 
 def socket_model_dir() -> Path:
@@ -60,8 +69,12 @@ def socket_model_path(device_id: str, socket_id: int) -> Path:
 
 
 def socket_queryset(device_id: str, socket_id: int):
+    socket_id = normalize_socket_id(socket_id)
+    relay_channel = relay_channel_for_socket(socket_id)
     return TelemetryReading.objects.filter(
-        Q(socket_id=socket_id) | Q(socket_id__isnull=True, channel=socket_id),
+        Q(socket_id=socket_id, channel=relay_channel) |
+        Q(socket_id=socket_id, channel__isnull=True) |
+        Q(socket_id__isnull=True, channel=relay_channel),
         device_id=device_id,
     ).exclude(status__iexact='OFF')
 
@@ -231,7 +244,7 @@ def publish_socket_cutoff(device_id: str, socket_id: int) -> str:
     payload = {
         'mac': device_id,
         'action': 'CONTROL_RELAY',
-        'channel': socket_id,
+        'channel': relay_channel_for_socket(socket_id),
         'state': False,
     }
     mqtt_publish.single(topic, payload=json.dumps(payload), hostname=broker, port=port, auth=auth, tls=tls)

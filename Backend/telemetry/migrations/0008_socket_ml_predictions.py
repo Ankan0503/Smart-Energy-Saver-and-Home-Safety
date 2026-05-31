@@ -18,9 +18,12 @@ class Migration(migrations.Migration):
         migrations.RunSQL(
             sql="""
                 UPDATE telemetry_telemetryreading
-                SET socket_id = channel
+                SET socket_id = CASE
+                    WHEN channel = 4 THEN 3
+                    ELSE channel
+                END
                 WHERE socket_id IS NULL
-                  AND channel IN (1, 2, 3);
+                  AND channel IN (1, 2, 4);
             """,
             reverse_sql=migrations.RunSQL.noop,
         ),
