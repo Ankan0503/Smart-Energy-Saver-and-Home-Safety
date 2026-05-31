@@ -536,11 +536,13 @@ export default function App() {
 
         const status = String(data.status || 'SAFE').toUpperCase();
 
+        const hasValidData = data.timestamp !== null;
+
         // flame == 0 means fire detected (Active-LOW)
-        const fireDetected = rawFlame === 0 || status.includes('FIRE');
+        const fireDetected = hasValidData && rawFlame === 0;
         setIsFlame(fireDetected);
 
-        const isGasLeak = rawGas >= 3500 || status.includes('GAS_LEAK');
+        const isGasLeak = hasValidData && rawGas >= 3500;
         const isFire = fireDetected;
 
         if (isFire && !wasFireRef.current) {
