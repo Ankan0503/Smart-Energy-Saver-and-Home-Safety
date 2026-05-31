@@ -72,3 +72,4 @@ def start_mqtt_listener():
         print("Started background MQTT listener thread...")
     except Exception as e:
         print(f"Failed to start MQTT Client: {e}")
+
