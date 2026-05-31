@@ -6,7 +6,7 @@ import pandas as pd
 from django.conf import settings
 
 
-FEATURE_COLUMNS = ['current', 'pir', 'hour_of_day']
+FEATURE_COLUMNS = ['current', 'hour_of_day']
 REQUIRED_ARTIFACT_KEYS = ['pipeline', 'features', 'score_reference', 'model_version']
 
 
@@ -47,7 +47,11 @@ def validate_model_bundle(bundle: dict) -> dict:
         if not hasattr(pipeline, method_name):
             raise InvalidModelArtifactError(f'Model pipeline does not implement {method_name}().')
 
-    score_reference = float(bundle.get('score_reference', 0))
+    score_reference = bundle.get('score_reference', 0.05)
+    try:
+        score_reference = float(score_reference)
+    except (ValueError, TypeError):
+        score_reference = 0.05
     if score_reference <= 0:
         raise InvalidModelArtifactError('Model score_reference must be greater than 0.')
 
@@ -109,16 +113,12 @@ def model_status() -> dict:
 def normalize_features(payload: dict) -> pd.DataFrame:
     """
     Convert API JSON into the exact feature frame expected by the sklearn pipeline.
-
-    `pir` is treated as a binary occupancy signal: 1 means motion/occupancy,
-    0 means no motion. `hour_of_day` should be 0-23.
     """
     missing = [name for name in FEATURE_COLUMNS if name not in payload]
     if missing:
         raise ValueError(f'Missing required feature(s): {", ".join(missing)}')
 
     current = float(payload['current'])
-    pir = 1 if int(payload['pir']) else 0
     hour = int(payload['hour_of_day'])
 
     if current < 0:
@@ -128,7 +128,6 @@ def normalize_features(payload: dict) -> pd.DataFrame:
 
     return pd.DataFrame([{
         'current': current,
-        'pir': pir,
         'hour_of_day': hour,
     }], columns=FEATURE_COLUMNS)
 
@@ -136,29 +135,21 @@ def normalize_features(payload: dict) -> pd.DataFrame:
 def _score_to_confidence(score: float, score_reference: float) -> float:
     """
     Convert IsolationForest distance from the decision boundary into 0-1 confidence.
-
-    sklearn returns negative decision scores for outliers and positive scores for
-    inliers. The training script stores a robust reference margin so this conversion
-    stays stable for real-time requests.
     """
     reference = max(float(score_reference), 1e-6)
     confidence = min(abs(score) / reference, 1.0)
     return round(float(confidence), 4)
 
 
-def _estimate_energy_waste(current: float, pir: int, is_anomaly: bool, payload: dict) -> dict:
+def _estimate_energy_waste(current: float, is_anomaly: bool, payload: dict) -> dict:
     """
     Estimate phantom energy for the provided reading window.
-
-    Phantom current is meaningful when there is measurable current while PIR reports
-    no occupancy. The estimate defaults to a one-minute window and household voltage
-    from settings, but callers can override both values in the request.
     """
     voltage = float(payload.get('voltage', getattr(settings, 'ANOMALY_DEFAULT_VOLTAGE', 230.0)))
     window_minutes = float(payload.get('sample_window_minutes', 1.0))
     baseline = float(payload.get('baseline_current', getattr(settings, 'PHANTOM_BASELINE_CURRENT', 0.0)))
 
-    phantom_current = max(current - baseline, 0.0) if pir == 0 and is_anomaly else 0.0
+    phantom_current = max(current - baseline, 0.0) if is_anomaly else 0.0
     watts = phantom_current * voltage
     watt_hours = watts * (window_minutes / 60.0)
 
@@ -172,24 +163,36 @@ def _estimate_energy_waste(current: float, pir: int, is_anomaly: bool, payload: 
 def predict_phantom_current(payload: dict) -> dict:
     """
     Run a single optimized prediction for the smart home API.
-
-    The model flags a phantom-current anomaly only when IsolationForest marks the
-    sample as abnormal and the PIR signal says the room is unoccupied.
     """
     features = normalize_features(payload)
-    bundle = load_model_bundle()
-    pipeline = bundle['pipeline']
-    score_reference = bundle.get('score_reference', 0.05)
-
-    raw_prediction = int(pipeline.predict(features)[0])
-    decision_score = float(pipeline.decision_function(features)[0])
-
     current = float(features.loc[0, 'current'])
-    pir = int(features.loc[0, 'pir'])
-    is_model_outlier = raw_prediction == -1
-    is_phantom_current = bool(is_model_outlier and pir == 0 and current > 0)
-    confidence = _score_to_confidence(decision_score, score_reference)
-    waste = _estimate_energy_waste(current, pir, is_phantom_current, payload)
+    hour = int(features.loc[0, 'hour_of_day'])
+    voltage = float(payload.get('voltage', getattr(settings, 'ANOMALY_DEFAULT_VOLTAGE', 230.0)))
+    power = current * voltage
+
+    try:
+        bundle = load_model_bundle()
+        pipeline = bundle['pipeline']
+        score_reference = bundle.get('score_reference', 0.05)
+
+        raw_prediction = int(pipeline.predict(features)[0])
+        decision_score = float(pipeline.decision_function(features)[0])
+
+        is_model_outlier = raw_prediction == -1
+        is_phantom_current = bool(is_model_outlier and current > 0)
+        confidence = _score_to_confidence(decision_score, score_reference)
+        model_version = bundle.get('model_version', 'unknown')
+        training_source = bundle.get('training_source', 'unknown')
+    except ModelNotReadyError:
+        # Fallback to rule-based logic if model isn't trained
+        # Standby/phantom load defined as 3.0W - 25.0W
+        is_phantom_current = (3.0 <= power <= 25.0)
+        decision_score = -0.15 if is_phantom_current else 0.15
+        confidence = 0.85 if is_phantom_current else 0.75
+        model_version = 'fallback'
+        training_source = 'rules'
+
+    waste = _estimate_energy_waste(current, is_phantom_current, payload)
 
     return {
         'anomaly': is_phantom_current,
@@ -199,9 +202,8 @@ def predict_phantom_current(payload: dict) -> dict:
         'estimated_energy_waste': waste,
         'features': {
             'current': current,
-            'pir': pir,
-            'hour_of_day': int(features.loc[0, 'hour_of_day']),
+            'hour_of_day': hour,
         },
-        'model_version': bundle.get('model_version', 'unknown'),
-        'training_source': bundle.get('training_source', 'unknown'),
+        'model_version': model_version,
+        'training_source': training_source,
     }

@@ -513,6 +513,13 @@ def toggle_appliance(request):
         appliance.active = active
         appliance.save()
 
+        # Update in-memory activation time for cutoff tracking
+        from anomaly.ml.appliance_state import record_activation, clear_activation
+        if active:
+            record_activation(appliance.id)
+        else:
+            clear_activation(appliance.id)
+
         # Send control command to relay node via MQTT
         from paho.mqtt import publish as mqtt_publish
         import os

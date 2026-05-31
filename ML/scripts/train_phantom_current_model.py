@@ -35,7 +35,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 
-FEATURE_COLUMNS = ['current', 'pir', 'hour_of_day']
+FEATURE_COLUMNS = ['current', 'hour_of_day']
 IDENTIFIER_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_.]*$')
 
 
@@ -44,11 +44,11 @@ def project_root() -> Path:
 
 
 def parse_args() -> argparse.Namespace:
+    args = argparse.Namespace()
     parser = argparse.ArgumentParser(description='Train phantom-current anomaly detector.')
     parser.add_argument('--database-url', default=os.getenv('DATABASE_URL'), help='Supabase Postgres DATABASE_URL.')
     parser.add_argument('--table', default=os.getenv('SUPABASE_SENSOR_TABLE', 'sensor_history'))
     parser.add_argument('--current-column', default=os.getenv('SUPABASE_CURRENT_COLUMN', 'current'))
-    parser.add_argument('--pir-column', default=os.getenv('SUPABASE_PIR_COLUMN', 'pir'))
     parser.add_argument('--timestamp-column', default=os.getenv('SUPABASE_TIMESTAMP_COLUMN', 'timestamp'))
     parser.add_argument('--limit', type=int, default=int(os.getenv('TRAINING_ROW_LIMIT', '50000')))
     parser.add_argument('--min-rows', type=int, default=int(os.getenv('MIN_TRAINING_ROWS', '500')))
@@ -81,23 +81,20 @@ def generate_synthetic_history(rows: int) -> pd.DataFrame:
     timestamps = pd.date_range(end=datetime.now(timezone.utc), periods=sample_count, freq='min')
     hours = timestamps.hour.to_numpy()
 
-    pir = rng.choice([0, 1], size=sample_count, p=[0.42, 0.58])
-    base_current = np.where(
-        pir == 1,
+    base_current = rng.choice([
         rng.normal(loc=0.42, scale=0.16, size=sample_count),
-        rng.normal(loc=0.018, scale=0.018, size=sample_count),
-    )
+        rng.normal(loc=0.018, scale=0.018, size=sample_count)
+    ], size=1)[0]
 
-    evening_boost = ((hours >= 18) & (hours <= 23) & (pir == 1)) * rng.normal(0.18, 0.06, sample_count)
+    evening_boost = ((hours >= 18) & (hours <= 23)) * rng.normal(0.18, 0.06, sample_count)
     current = np.clip(base_current + evening_boost, 0, None)
 
     anomaly_count = max(12, int(sample_count * 0.03))
-    anomaly_indices = rng.choice(np.where(pir == 0)[0], size=anomaly_count, replace=False)
+    anomaly_indices = rng.choice(np.arange(sample_count), size=anomaly_count, replace=False)
     current[anomaly_indices] = rng.normal(loc=0.55, scale=0.12, size=anomaly_count).clip(0.25, 1.2)
 
     return pd.DataFrame({
         'current': current,
-        'pir': pir,
         'timestamp': timestamps,
     })
 
@@ -109,18 +106,16 @@ def load_history(args: argparse.Namespace) -> pd.DataFrame:
     if not args.database_url:
         raise RuntimeError('DATABASE_URL is required to read sensor history from Supabase. Use --synthetic for a local bootstrap model.')
 
-    for value in [args.table, args.current_column, args.pir_column, args.timestamp_column]:
+    for value in [args.table, args.current_column, args.timestamp_column]:
         if not IDENTIFIER_RE.match(value):
             raise RuntimeError(f'Unsafe SQL identifier: {value}')
 
     query = f"""
         SELECT
             {args.current_column} AS current,
-            {args.pir_column} AS pir,
             {args.timestamp_column} AS timestamp
         FROM {args.table}
         WHERE {args.current_column} IS NOT NULL
-          AND {args.pir_column} IS NOT NULL
           AND {args.timestamp_column} IS NOT NULL
         ORDER BY {args.timestamp_column} DESC
         LIMIT %s
@@ -137,7 +132,6 @@ def preprocess_history(history: pd.DataFrame, min_rows: int = 500) -> pd.DataFra
     frame = history.copy()
     frame['timestamp'] = pd.to_datetime(frame['timestamp'], utc=True, errors='coerce')
     frame['current'] = pd.to_numeric(frame['current'], errors='coerce')
-    frame['pir'] = pd.to_numeric(frame['pir'], errors='coerce').fillna(0).astype(int).clip(0, 1)
     frame['hour_of_day'] = frame['timestamp'].dt.hour
     frame = frame.dropna(subset=FEATURE_COLUMNS)
 

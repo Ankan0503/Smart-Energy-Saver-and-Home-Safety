@@ -118,3 +118,26 @@ def get_latest_telemetry(request):
             "device_name": "No Active Telemetry"
         }
     return JsonResponse(data)
+
+def debug_telemetry(request):
+    readings = TelemetryReading.objects.all().order_by('-id')[:40]
+    data = []
+    for r in readings:
+        pred = getattr(r, 'prediction', None)
+        data.append({
+            "id": r.id,
+            "device_id": r.device_id,
+            "appliance_id": r.appliance_id,
+            "appliance_name": r.appliance.name if r.appliance else "Global",
+            "current": r.current,
+            "power": r.power,
+            "c1": r.c1,
+            "c2": r.c2,
+            "c3": r.c3,
+            "c4": r.c4,
+            "predicted_state": pred.predicted_state if pred else "N/A",
+            "action_taken": pred.action_taken if pred else "",
+            "reason": pred.reason if pred else "",
+            "timestamp": r.timestamp.isoformat()
+        })
+    return JsonResponse({"readings": data})

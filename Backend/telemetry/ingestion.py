@@ -73,15 +73,21 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
                 }
             )
 
-    current = _float_value(data.get('current'), 0.0)
     voltage = _float_value(data.get('voltage'), getattr(settings, 'APPLIANCE_DEFAULT_VOLTAGE', 230.0))
-    power = _float_value(data.get('power'), current * voltage)
     timestamp = data.get('timestamp')
 
     c1 = _float_value(data.get("c1"), 0.0)
     c2 = _float_value(data.get("c2"), 0.0)
-    c3 = _float_value(data.get("c3"), 0.0)
+    c3 = 0.0  # Force to 0.0 since IN3 has no physical socket connected
     c4 = _float_value(data.get("c4"), 0.0)
+
+    # Recalculate combined current and power to exclude the unused channel 3 (IN3)
+    if device.role == 'relay':
+        current = c1 + c2 + c4
+    else:
+        current = _float_value(data.get('current'), 0.0)
+        
+    power = current * voltage
 
     # 1. Save the overall/combined device telemetry reading
     reading = TelemetryReading.objects.create(
@@ -116,6 +122,8 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
             4: c4
         }
         for app in appliances:
+            if app.channel == 3:
+                continue  # Skip channel 3 since there is no physical socket
             app_current = channel_currents.get(app.channel, 0.0)
             app_reading = TelemetryReading.objects.create(
                 device_ref=device,
@@ -135,6 +143,9 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
             if timestamp:
                 app_reading.timestamp = parsed
                 app_reading.save(update_fields=['timestamp'])
+            
+            # Run prediction and auto-cutoff logic for each individual appliance channel
+            predict_log_and_act(app_reading)
 
     prediction = predict_log_and_act(reading)
     return reading, prediction

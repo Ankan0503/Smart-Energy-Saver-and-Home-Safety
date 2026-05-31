@@ -73,7 +73,6 @@ class Command(BaseCommand):
             rows = [
                 {
                     'current': reading.current,
-                    'pir': reading.pir,
                     'timestamp': reading.timestamp,
                 }
                 for reading in queryset

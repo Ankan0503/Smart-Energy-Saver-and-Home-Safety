@@ -122,36 +122,42 @@ void resetPairing() {
 }
 
 #ifdef DEVICE_TYPE_AUTOMATION
-// Function to calculate true RMS AC Current for a specific sensor pin
+// Function to calculate true RMS AC Current for a specific sensor pin with dynamic auto-calibration
 float getACCurrent(int sensorPin) {
-  float sampleSum = 0;
-  long sampleCount = 0;
+  int samples[200];
+  int sampleCount = 0;
   unsigned long startTime = millis();
+  long sum = 0;
   
-  // Sample the AC waveform for exactly 20ms (one complete 50Hz cycle)
-  while ((millis() - startTime) < 20) {
+  // 1. Sample the AC wave for exactly 20ms (one complete 50Hz cycle)
+  while ((millis() - startTime) < 20 && sampleCount < 200) {
     int rawADC = analogRead(sensorPin);
-    
-    // Convert raw ADC steps to millivolts
-    float voltageMV = ((float)rawADC / ADC_RESOLUTION) * VREF;
-    
-    // Subtract the 2.5V center offset (1515mV after passing through your 1k/2k voltage divider)
-    float zeroOffsetVoltage = voltageMV - 1515.0; 
-    
-    // Square the instantaneous value
-    sampleSum += (zeroOffsetVoltage * zeroOffsetVoltage);
+    samples[sampleCount] = rawADC;
+    sum += rawADC;
     sampleCount++;
+    delayMicroseconds(100); 
   }
   
-  // Calculate Root Mean Square (RMS) Voltage
-  float rmsVoltage = sqrt(sampleSum / sampleCount);
+  if (sampleCount == 0) return 0.0;
   
-  // Calculate RMS Current (Amps = mV / Sensitivity)
-  // Multiply by 1.5 to reverse the reduction from your 1k/2k voltage divider ratio
+  // 2. Average raw value is the dynamically calculated DC bias offset
+  float avgADC = (float)sum / sampleCount;
+  
+  // 3. Root-Mean-Square (RMS) deviation around that dynamic offset
+  float sqSum = 0.0;
+  for (int i = 0; i < sampleCount; i++) {
+    float diff = (float)samples[i] - avgADC;
+    sqSum += (diff * diff);
+  }
+  
+  float rmsADC = sqrt(sqSum / sampleCount);
+  
+  // 4. Convert RMS ADC steps to Voltage (mV) and then to Current (Amps)
+  float rmsVoltage = (rmsADC / ADC_RESOLUTION) * VREF;
   float currentAmps = (rmsVoltage / SENSITIVITY) * 1.5;
   
-  // Filter out microscopic ambient sensor noise when appliance is idle
-  if (currentAmps < 0.05) {
+  // 5. Noise filter: treat loads under 9W (40mA) as idle/0
+  if (currentAmps < 0.04) {
     currentAmps = 0.0;
   }
   
@@ -432,16 +438,16 @@ void loop() {
 
         // --- AUTOMATION CURRENT TRANSFORMER BLOCK ---
         #ifdef DEVICE_TYPE_AUTOMATION
-        // Calculate true Root-Mean-Square (RMS) current drawn from each appliance
-        float c1 = getACCurrent(CURRENT_PINS[0]);
-        float c2 = getACCurrent(CURRENT_PINS[1]);
-        float c3 = getACCurrent(CURRENT_PINS[2]);
-        float c4 = getACCurrent(CURRENT_PINS[3]);
-        
-        float totalCurrentCombined = c1 + c2 + c3 + c4;
-
         if (now - lastBroadcast > broadcastInterval) {
             lastBroadcast = now;
+
+            // Calculate true Root-Mean-Square (RMS) current drawn from each appliance only when broadcasting
+            float c1 = getACCurrent(CURRENT_PINS[0]);
+            float c2 = getACCurrent(CURRENT_PINS[1]);
+            float c3 = getACCurrent(CURRENT_PINS[2]);
+            float c4 = getACCurrent(CURRENT_PINS[3]);
+            
+            float totalCurrentCombined = c1 + c2 + c3 + c4;
 
             uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
             char telemetryPayload[350];
