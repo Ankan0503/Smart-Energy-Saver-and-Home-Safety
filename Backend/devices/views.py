@@ -540,15 +540,18 @@ def toggle_appliance(request):
         }
 
         try:
-            mqtt_publish.single(
-                "aether/pairing/command",
-                payload=json.dumps(control_payload),
-                hostname=MQTT_BROKER,
-                port=MQTT_PORT,
-                auth=auth,
-                tls=tls
-            )
-            print(f"Published CONTROL_RELAY to MQTT: {control_payload}")
+            if MQTT_BROKER:
+                mqtt_publish.single(
+                    "aether/pairing/command",
+                    payload=json.dumps(control_payload),
+                    hostname=MQTT_BROKER,
+                    port=MQTT_PORT,
+                    auth=auth,
+                    tls=tls
+                )
+                print(f"Published CONTROL_RELAY to MQTT: {control_payload}")
+            else:
+                print("MQTT_BROKER not configured; skipping MQTT publish.")
         except Exception as mqtt_err:
             print(f"Failed to publish MQTT control relay command: {mqtt_err}")
             return JsonResponse({"error": "Failed to contact MQTT broker"}, status=500)

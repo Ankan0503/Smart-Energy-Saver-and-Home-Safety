@@ -27,6 +27,7 @@ SOCKET_TO_RELAY_CHANNEL = {
     1: 1,
     2: 2,
     3: 4,
+    4: 3,
 }
 FEATURE_COLUMNS = [
     'current',
@@ -48,7 +49,7 @@ class SocketModelNotReady(RuntimeError):
 def normalize_socket_id(value: Any) -> int:
     socket_id = int(value)
     if socket_id not in SOCKET_TO_RELAY_CHANNEL:
-        raise ValueError('socket_id must be one of 1, 2, or 3.')
+        raise ValueError('socket_id must be one of 1, 2, 3, or 4.')
     return socket_id
 
 
