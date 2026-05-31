@@ -25,6 +25,16 @@ def _int_value(value, default=0):
         return default
 
 
+def _bool_value(value, default=False):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in {'1', 'true', 'on', 'yes'}
+
+
 def payload_hash(payload: dict) -> str:
     normalized = json.dumps(payload, sort_keys=True, separators=(',', ':'))
     return hashlib.sha256(normalized.encode('utf-8')).hexdigest()
@@ -78,12 +88,12 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
 
     c1 = _float_value(data.get("c1"), 0.0)
     c2 = _float_value(data.get("c2"), 0.0)
-    c3 = 0.0  # Force to 0.0 since IN3 has no physical socket connected
+    c3 = _float_value(data.get("c3"), 0.0)
     c4 = _float_value(data.get("c4"), 0.0)
 
-    # Recalculate combined current and power to exclude the unused channel 3 (IN3)
+    # Recalculate combined current and power from all four relay sockets.
     if device.role == 'relay':
-        current = c1 + c2 + c4
+        current = c1 + c2 + c3 + c4
     else:
         current = _float_value(data.get('current'), 0.0)
         
@@ -94,6 +104,7 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
         device_ref=device,
         device_id=mac,
         appliance_id=None,
+        channel=None,
         gas=_int_value(data.get('gas'), 0),
         current=current,
         power=power,
@@ -122,13 +133,20 @@ def ingest_telemetry_payload(data: dict) -> tuple[TelemetryReading, object | Non
             4: c4
         }
         for app in appliances:
-            if app.channel == 3:
-                continue  # Skip channel 3 since there is no physical socket
             app_current = channel_currents.get(app.channel, 0.0)
+            relay_state_key = f'r{app.channel}'
+            if relay_state_key in data:
+                app.active = _bool_value(data.get(relay_state_key), app.active)
+                app.save(update_fields=['active'])
+            elif app_current > 0.0 and not app.active:
+                app.active = True
+                app.save(update_fields=['active'])
+
             app_reading = TelemetryReading.objects.create(
                 device_ref=device,
                 device_id=mac,
                 appliance_id=app.id,
+                channel=app.channel,
                 gas=_int_value(data.get('gas'), 0),
                 current=app_current,  # Mapped individual current
                 power=app_current * voltage,

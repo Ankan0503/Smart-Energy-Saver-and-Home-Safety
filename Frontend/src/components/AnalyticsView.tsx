@@ -35,7 +35,23 @@ export const AnalyticsView = ({
   insight,
   isLoading,
   onRefresh
-}: AnalyticsViewProps) => (
+}: AnalyticsViewProps) => {
+  const chartData = Array.isArray(data)
+    ? data.map((point: any, index: number) => {
+      const power = Number(point.Power ?? point.power ?? point.value ?? 0);
+      const previousPoint = data[index - 1] as any;
+      const previousPower = Number(previousPoint?.Power ?? previousPoint?.power ?? previousPoint?.value ?? power);
+      return {
+        ...point,
+        name: point.name || point.timestamp || `${index + 1}`,
+        Power: Number.isFinite(power) ? power : 0,
+        previousPower: Number.isFinite(previousPower) ? previousPower : 0,
+      };
+    })
+    : [];
+  const latestPower = chartData.length ? chartData[chartData.length - 1].Power : 0;
+
+  return (
   <motion.div 
     initial={{ opacity: 0, scale: 0.98 }}
     animate={{ opacity: 1, scale: 1 }}
@@ -77,18 +93,18 @@ export const AnalyticsView = ({
               <TrendingUp size={24} className="text-olive" />
             </div>
             <div>
-               <h3 className="text-sm font-bold text-ink uppercase tracking-widest">Thermal Dissipation Map</h3>
-               <p className="text-[9px] text-ink/20 font-black uppercase mt-0.5 tracking-widest">Aggregate node stress test</p>
+               <h3 className="text-sm font-bold text-ink uppercase tracking-widest">Power Usage Map</h3>
+               <p className="text-[9px] text-ink/20 font-black uppercase mt-0.5 tracking-widest">Live dataset Power column</p>
             </div>
           </div>
           <div className="text-left sm:text-right">
-             <div className="text-[8px] font-black text-ink/20 uppercase tracking-widest">Stability Index</div>
-             <div className="text-xl font-display font-medium text-olive">0.982 <span className="text-xs opacity-40">σ</span></div>
+             <div className="text-[8px] font-black text-ink/20 uppercase tracking-widest">Latest Power</div>
+             <div className="text-xl font-display font-medium text-olive">{latestPower.toFixed(1)} <span className="text-xs opacity-40">W</span></div>
           </div>
         </div>
         <div className="h-[260px] sm:h-[320px] 2xl:h-96">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data}>
+            <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="analysisGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#606C38" stopOpacity={0.15}/>
@@ -101,9 +117,10 @@ export const AnalyticsView = ({
               <Tooltip 
                 contentStyle={{ borderRadius: '32px', border: 'none', boxShadow: '0 20px 50px rgba(45,76,59,0.1)', padding: '20px' }}
                 itemStyle={{ color: '#2D4C3B', fontWeight: 900, fontSize: '12px' }}
+                formatter={(value: any, name: any) => [`${Number(value || 0).toFixed(1)} W`, name === 'Power' ? 'Power' : 'Previous']}
               />
-              <Area type="monotone" dataKey="value" stroke="#606C38" fillOpacity={1} fill="url(#analysisGrad)" strokeWidth={5} />
-              <Area type="monotone" dataKey="previous" stroke="#D9D9D9" fillOpacity={0} strokeWidth={2} strokeDasharray="10 10" />
+              <Area type="monotone" dataKey="Power" stroke="#606C38" fillOpacity={1} fill="url(#analysisGrad)" strokeWidth={5} />
+              <Area type="monotone" dataKey="previousPower" stroke="#D9D9D9" fillOpacity={0} strokeWidth={2} strokeDasharray="10 10" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -169,4 +186,5 @@ export const AnalyticsView = ({
       </div>
     </div>
   </motion.div>
-);
+  );
+};

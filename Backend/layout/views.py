@@ -18,12 +18,15 @@ VALID_DOOR_WALLS = {'top', 'right', 'bottom', 'left'}
 
 
 def _serialize_device(device):
+    from django.utils import timezone
+
+    is_active = (timezone.now() - device.last_seen).total_seconds() < 15 if device.last_seen else False
     return {
         'mac_address': device.mac_address,
         'device_alias': device.name,
         'device_type': 'GATEWAY' if device.role == 'gateway' else 'SUBNODE',
         'role': device.role,
-        'is_active': False,
+        'is_active': is_active,
         'last_seen': device.last_seen.isoformat() if device.last_seen else None,
     }
 
@@ -33,6 +36,7 @@ def _serialize_room(room):
     return {
         'id': str(room.id),
         'name': room.name,
+        'floor': room.floor,
         'grid_x': room.grid_x,
         'grid_y': room.grid_y,
         'grid_w': room.grid_w,
@@ -77,6 +81,7 @@ def _parse_room_payload(raw_room):
     return {
         'id': raw_room.get('id'),
         'name': name,
+        'floor': _clamp_int(raw_room.get('floor'), 0, minimum=0, maximum=20),
         'grid_x': _clamp_int(raw_room.get('grid_x'), 0),
         'grid_y': _clamp_int(raw_room.get('grid_y'), 0),
         'grid_w': _clamp_int(raw_room.get('grid_w'), 4, minimum=1),

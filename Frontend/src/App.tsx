@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { lazy, Suspense, useState, useEffect, useMemo } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Zap,
@@ -44,12 +44,13 @@ import { SafetyHubView } from './components/SafetyHubView';
 import { SafetyAlertOverlay } from './components/SafetyAlertOverlay';
 import { EventsView } from './components/EventsView';
 import { SettingsView } from './components/SettingsView';
-import { sendHazardNotification } from './services/pwaService';
+import { sendHazardNotification, showImmediateHazardNotification } from './services/pwaService';
 
 // Import refactored hook
 import { useAudioAlert } from './hooks/useAudioAlert';
 
 const DigitalTwinView = lazy(() => import('./components/DigitalTwinView').then(module => ({ default: module.DigitalTwinView })));
+const HAZARD_ALERT_RESET_MS = 10000;
 
 // --- Mock Data ---
 const generateChartData = (range: string = 'Daily') => {
@@ -132,6 +133,9 @@ export default function App() {
   const [resetCompleted, setResetCompleted] = useState(false);
   const [wasGasLeak, setWasGasLeak] = useState(false);
   const [wasFire, setWasFire] = useState(false);
+  const wasGasLeakRef = useRef(false);
+  const wasFireRef = useRef(false);
+  const hazardSafeSinceRef = useRef<number | null>(Date.now());
   const [systemStatus, setSystemStatus] = useState('SAFE');
   const [gatewayMac, setGatewayMac] = useState('');
   const [liveTelemetry, setLiveTelemetry] = useState<any>({ gas: 0, current: 0, pir: 1, flame: 1, status: 'SAFE' });
@@ -521,6 +525,7 @@ export default function App() {
         const data = await res.json();
         const rawGas = Number(data.gas || 0);
         const rawCurrent = Number(data.current || 0);
+        const rawPower = Number(data.Power ?? data.power ?? 0);
         const rawPir = Number(data.pir ?? 1);
         const rawFlame = Number(data.flame ?? 1);
         setLiveTelemetry(data);
@@ -529,12 +534,62 @@ export default function App() {
         const uiGasLevel = rawGas / 10;
         setGasLevel(uiGasLevel);
 
+        const status = String(data.status || 'SAFE').toUpperCase();
+
         // flame == 0 means fire detected (Active-LOW)
-        const fireDetected = rawFlame === 0;
+        const fireDetected = rawFlame === 0 || status.includes('FIRE');
         setIsFlame(fireDetected);
 
-        const isGasLeak = rawGas > 3500;
+        const isGasLeak = rawGas >= 3500 || status.includes('GAS_LEAK');
         const isFire = fireDetected;
+
+        if (isFire && !wasFireRef.current) {
+          hazardSafeSinceRef.current = null;
+          wasFireRef.current = true;
+          setShowOverlay('fire');
+          void showImmediateHazardNotification({
+            title: 'AETHER fire alert',
+            message: 'Flame sensor triggered. Check the safety hub immediately.',
+            tag: 'aether-fire-alert',
+          });
+          void sendHazardNotification(token, {
+            hazard_type: 'FIRE',
+            severity: 'critical',
+            title: 'AETHER fire alert',
+            message: 'Flame sensor triggered. Check the safety hub immediately.',
+          });
+        } else if (isGasLeak && !wasGasLeakRef.current && !isFire) {
+          hazardSafeSinceRef.current = null;
+          wasGasLeakRef.current = true;
+          setShowOverlay('gas');
+          void showImmediateHazardNotification({
+            title: 'AETHER gas leak alert',
+            message: `Gas level is high (${rawGas}). Ventilate and inspect the mesh zone immediately.`,
+            tag: 'aether-gas-alert',
+          });
+          void sendHazardNotification(token, {
+            hazard_type: 'GAS_LEAK',
+            severity: 'critical',
+            title: 'AETHER gas leak alert',
+            message: `Gas level is high (${rawGas}). Ventilate and inspect the mesh zone immediately.`,
+          });
+        } else if (isGasLeak || isFire) {
+          hazardSafeSinceRef.current = null;
+        } else if (!isGasLeak && !isFire) {
+          setShowOverlay(null);
+          const now = Date.now();
+          if (hazardSafeSinceRef.current === null) {
+            hazardSafeSinceRef.current = now;
+          }
+          if (now - hazardSafeSinceRef.current >= HAZARD_ALERT_RESET_MS) {
+            wasGasLeakRef.current = false;
+            wasFireRef.current = false;
+          }
+        }
+
+        setWasGasLeak(wasGasLeakRef.current);
+        setWasFire(wasFireRef.current);
+        setSystemStatus(data.status || 'SAFE');
 
         try {
           const hazardRes = await fetch(`${apiBaseUrl}/api/hazards/predict/`, {
@@ -555,6 +610,8 @@ export default function App() {
               const nextPoint = {
                 name: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                 current: rawCurrent,
+                Power: rawPower,
+                power: rawPower,
                 gas: Math.round(rawGas / 10),
                 risk: hazardPayload.risk_score ?? 0
               };
@@ -592,34 +649,6 @@ export default function App() {
           setApiStatus(prev => ({ ...prev, anomaly: 'offline' }));
         }
 
-        // Manage safety overlays based on transition state
-        if (isFire && !wasFire) {
-          setShowOverlay('fire');
-          sendHazardNotification(token, {
-            hazard_type: 'FIRE',
-            severity: 'critical',
-            risk_score: hazardRisk?.risk_score,
-            title: 'AETHER fire alert',
-            message: 'Flame sensor triggered. Check the safety hub immediately.',
-          });
-        } else if (isGasLeak && !wasGasLeak && !isFire) {
-          setShowOverlay('gas');
-          sendHazardNotification(token, {
-            hazard_type: 'GAS_LEAK',
-            severity: 'critical',
-            risk_score: hazardRisk?.risk_score,
-            title: 'AETHER gas leak alert',
-            message: `Gas level is high (${rawGas}). Ventilate and inspect the mesh zone immediately.`,
-          });
-        } else if (!isGasLeak && !isFire) {
-          setShowOverlay(null);
-        }
-
-        // Update transition states
-        setWasGasLeak(isGasLeak);
-        setWasFire(isFire);
-        setSystemStatus(data.status || 'SAFE');
-
         // Handle physical overcurrent relay trip in UI
         if (data.status === 'OVERCURRENT_TRIP') {
           setZones(prev => prev.map(z => z.id === 'kitchen-app' ? { ...z, active: false, status: 'Idle' } : z));
@@ -630,9 +659,9 @@ export default function App() {
     };
 
     fetchTelemetry();
-    const interval = setInterval(fetchTelemetry, 1500);
+    const interval = setInterval(fetchTelemetry, 600);
     return () => clearInterval(interval);
-  }, [wasGasLeak, wasFire, token, meshId, gatewayMac]);
+  }, [token, meshId, gatewayMac]);
 
   const handleToggleSecurityLock = async (nextLockedState: boolean) => {
     try {
@@ -1185,7 +1214,7 @@ export default function App() {
 
           {activeView === 'analytics' && (
             <AnalyticsView
-              data={data}
+              data={sensorData.length ? sensorData : data}
               zones={zones}
               metrics={systemMetrics}
               activeRange={analyticsRange}
@@ -1235,6 +1264,7 @@ export default function App() {
             }>
               <DigitalTwinView
                 token={token}
+                meshId={meshId}
                 liveTelemetry={liveTelemetry}
                 addToast={addToast}
               />

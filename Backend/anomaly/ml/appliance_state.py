@@ -26,6 +26,10 @@ def clear_activation(appliance_id: int):
     _ACTIVATION_TIMES.pop(appliance_id, None)
 
 
+def clear_activation_times():
+    _ACTIVATION_TIMES.clear()
+
+
 STATE_ACTIVE = 'ACTIVE'
 STATE_IDLE = 'IDLE'
 STATE_PHANTOM_LOAD = 'PHANTOM_LOAD'
@@ -39,7 +43,8 @@ FEATURE_COLUMNS = [
     'device_avg_power',
     'device_max_power',
     'power_to_avg_ratio',
-    'device_id',
+    'appliance_channel',
+    'channel_key',
 ]
 
 
@@ -51,9 +56,30 @@ def model_path() -> Path:
     return Path(getattr(settings, 'APPLIANCE_STATE_MODEL_PATH'))
 
 
+def reading_channel(reading: TelemetryReading) -> int | None:
+    if reading.channel:
+        return int(reading.channel)
+    if reading.appliance:
+        return int(reading.appliance.channel)
+    return None
+
+
+def reading_channel_key(reading: TelemetryReading) -> str:
+    channel = reading_channel(reading)
+    return f'{reading.device_id}:ch{channel}' if channel else f'{reading.device_id}:global'
+
+
+def channel_history(reading: TelemetryReading):
+    queryset = TelemetryReading.objects.filter(device_id=reading.device_id)
+    channel = reading_channel(reading)
+    if channel:
+        return queryset.filter(channel=channel)
+    return queryset.filter(appliance_id__isnull=True)
+
+
 def telemetry_to_features(reading: TelemetryReading) -> pd.DataFrame:
     ts = timezone.localtime(reading.timestamp)
-    stats = TelemetryReading.objects.filter(device_id=reading.device_id).aggregate(
+    stats = channel_history(reading).exclude(pk=reading.pk).aggregate(
         avg_power=Avg('power'),
         max_power=Max('power'),
     )
@@ -69,7 +95,8 @@ def telemetry_to_features(reading: TelemetryReading) -> pd.DataFrame:
         'device_avg_power': avg_power,
         'device_max_power': max_power,
         'power_to_avg_ratio': ratio,
-        'device_id': reading.device_id,
+        'appliance_channel': int(reading_channel(reading) or 0),
+        'channel_key': reading_channel_key(reading),
     }], columns=FEATURE_COLUMNS)
 
 
@@ -126,6 +153,36 @@ def predict_appliance_state(reading: TelemetryReading) -> dict[str, Any]:
         model_version = 'fallback'
         reason = f'{reason} {exc}'
 
+    power = float(reading.power or 0.0)
+    idle_power_watts = float(getattr(settings, 'APPLIANCE_IDLE_POWER_THRESHOLD_WATTS', 2.0))
+    idle_current_amps = float(getattr(settings, 'APPLIANCE_IDLE_CURRENT_THRESHOLD_AMPS', 0.02))
+    phantom_power_watts = float(getattr(settings, 'APPLIANCE_PHANTOM_CUTOFF_POWER_WATTS', 25.0))
+
+    if power <= idle_power_watts and float(reading.current or 0.0) <= idle_current_amps:
+        predicted_state = STATE_IDLE
+        confidence = max(float(confidence), 0.92)
+        reason = (
+            f'{reason} Low-load override: {power:.1f}W is below the idle threshold.'
+        )
+    elif 3.0 <= power <= phantom_power_watts:
+        predicted_state = STATE_PHANTOM_LOAD
+        confidence = max(float(confidence), 0.88)
+        reason = (
+            f'{reason} Standby override: {power:.1f}W is inside the phantom cutoff band.'
+        )
+
+    prior_max = float(features.loc[0, 'device_max_power'] or 0.0)
+    prior_avg = float(features.loc[0, 'device_avg_power'] or 0.0)
+    has_prior_history = channel_history(reading).exclude(pk=reading.pk).count() >= 5
+    abnormal_floor = max(60.0, prior_max * 1.35, prior_avg * 2.5)
+    if has_prior_history and power > abnormal_floor:
+        predicted_state = STATE_ABNORMAL
+        confidence = max(float(confidence), 0.9)
+        reason = (
+            f'{reason} Channel-specific deviation: {power:.1f}W exceeds learned '
+            f'normal max {prior_max:.1f}W.'
+        )
+
     return {
         'predicted_state': predicted_state,
         'confidence_score': round(confidence, 4),
@@ -160,20 +217,40 @@ def fallback_prediction(reading: TelemetryReading) -> tuple[str, float, str]:
     return STATE_IDLE, 0.62, 'Device turned off.'
 
 
+def consecutive_state_hits(reading: TelemetryReading, predicted_state: str, required_hits: int) -> int:
+    if required_hits <= 1:
+        return 1
+
+    hits = 1
+    prior_predictions = ApplianceStatePrediction.objects.filter(
+        device_id=reading.device_id,
+        appliance_channel=reading_channel(reading),
+        telemetry__timestamp__lte=reading.timestamp,
+    ).exclude(
+        telemetry_id=reading.pk,
+    ).order_by('-telemetry__timestamp', '-id')[:required_hits - 1]
+
+    for prediction in prior_predictions:
+        if prediction.predicted_state != predicted_state:
+            break
+        hits += 1
+    return hits
+
+
 def should_cutoff(reading: TelemetryReading, predicted_state: str) -> tuple[bool, str]:
     if not getattr(settings, 'APPLIANCE_CUTOFF_ENABLED', True):
         return False, 'Automatic cutoff disabled.'
-    if predicted_state not in {STATE_PHANTOM_LOAD, STATE_IDLE}:
-        return False, 'Predicted state does not require cutoff.'
+    if predicted_state not in {STATE_IDLE, STATE_PHANTOM_LOAD}:
+        return False, 'Only idle or confirmed phantom sockets are eligible for automatic cutoff.'
     if not reading.appliance:
         return False, 'Global telemetry reading does not trigger cutoff.'
     if not reading.appliance.active:
         return False, 'Appliance is already turned off.'
 
-    import os
-    from dotenv import load_dotenv
-    load_dotenv()
-    cutoff_seconds = int(os.getenv('APPLIANCE_IDLE_CUTOFF_SECONDS', 300))
+    power = float(reading.power or 0.0)
+    current = float(reading.current or 0.0)
+
+    cutoff_seconds = int(getattr(settings, 'APPLIANCE_IDLE_CUTOFF_SECONDS', 8))
 
     # Check activation safety window to prevent immediately shutting off a newly turned on relay
     activation_time = get_activation_time(reading.appliance_id)
@@ -186,43 +263,53 @@ def should_cutoff(reading: TelemetryReading, predicted_state: str) -> tuple[bool
     if time_since_activation < cutoff_seconds:
         return False, f'Appliance was recently turned on ({int(time_since_activation)}s ago).'
     
-    # Check if this appliance/channel is a light or charger
-    app_type = (reading.appliance.type or '').lower()
-    app_name = (reading.appliance.name or '').lower()
-    is_exempt_when_drawing = (
-        'light' in app_type or 'light' in app_name or
-        'charger' in app_type or 'charger' in app_name
-    )
-    if is_exempt_when_drawing:
-        # Exempt from auto-cutoff only if actively drawing power (turned ON and plugged in)
-        if float(reading.power or 0.0) > 0.0:
-            return False, 'Lights and chargers are exempt from auto-cutoff when drawing power.'
+    if predicted_state == STATE_PHANTOM_LOAD:
+        required_hits = int(getattr(settings, 'APPLIANCE_PHANTOM_CUTOFF_HITS', 3))
+        hits = consecutive_state_hits(reading, predicted_state, required_hits)
+        if hits < required_hits:
+            return False, (
+                f'Phantom load needs {required_hits} consecutive confirmations; '
+                f'currently {hits}.'
+            )
 
-    since = reading.timestamp - timezone.timedelta(seconds=cutoff_seconds)
-    
-    # Look at recent readings for this specific appliance channel
-    recent = TelemetryReading.objects.filter(
+        phantom_power_watts = float(getattr(settings, 'APPLIANCE_PHANTOM_CUTOFF_POWER_WATTS', 25.0))
+        if power > phantom_power_watts:
+            return False, (
+                f'Phantom prediction is above the standby cutoff ceiling '
+                f'({power:.1f}W > {phantom_power_watts:.1f}W).'
+            )
+
+    confirmation_readings = max(1, int(getattr(settings, 'APPLIANCE_CUTOFF_CONFIRMATION_READINGS', 3)))
+    recent = list(TelemetryReading.objects.filter(
         device_id=reading.device_id,
-        appliance_id=reading.appliance_id,
-        timestamp__gte=since,
+        channel=reading_channel(reading),
         timestamp__lte=reading.timestamp,
-    )
-    if not recent.exists():
-        return False, 'Insufficient history for cutoff decision.'
+    ).order_by('-timestamp', '-id')[:confirmation_readings])
+    if len(recent) < confirmation_readings:
+        return False, (
+            f'Need {confirmation_readings} recent telemetry readings; '
+            f'currently {len(recent)}.'
+        )
         
-    # Ensure we have telemetry spanning the full duration of the window
-    oldest = recent.order_by('timestamp').first()
-    # For short cutoff windows (e.g. 20s), we adjust the historical range check buffer
-    buffer_seconds = min(20, int(cutoff_seconds * 0.6))
-    if oldest.timestamp > since + timezone.timedelta(seconds=buffer_seconds):
-        return False, 'Insufficient historical range to confirm continuous idle state.'
-        
-    # If the appliance was active (power > 25W) at any point, do not cutoff
-    active_readings = recent.filter(power__gt=25.0)
-    if active_readings.exists():
-        return False, 'Appliance had active load inside cutoff window.'
+    idle_power_watts = float(getattr(settings, 'APPLIANCE_IDLE_POWER_THRESHOLD_WATTS', 2.0))
+    idle_current_amps = float(getattr(settings, 'APPLIANCE_IDLE_CURRENT_THRESHOLD_AMPS', 0.02))
+    if predicted_state == STATE_IDLE:
+        has_load = any(
+            float(sample.power or 0.0) > idle_power_watts or
+            float(sample.current or 0.0) > idle_current_amps
+            for sample in recent
+        )
+        if has_load:
+            return False, 'Latest telemetry still has measurable load.'
+    elif any(float(sample.power or 0.0) > phantom_power_watts for sample in recent):
+        return False, 'Latest telemetry exceeded the phantom standby ceiling.'
 
-    return True, f'Appliance has been idle (standby load) continuously for {cutoff_seconds} seconds.'
+    if predicted_state == STATE_PHANTOM_LOAD:
+        return True, (
+            f'Channel {reading_channel(reading)} has shown phantom standby for '
+            f'{hits} consecutive windows at {power:.1f}W/{current:.3f}A.'
+        )
+    return True, f'Channel {reading_channel(reading)} has been idle continuously for {cutoff_seconds} seconds.'
 
 
 def publish_cutoff_command(reading: TelemetryReading) -> str:
@@ -234,8 +321,7 @@ def publish_cutoff_command(reading: TelemetryReading) -> str:
     username = os.getenv('MQTT_USER')
     password = os.getenv('MQTT_PASSWORD')
     
-    # Send control command to pairing/command topic
-    topic = 'aether/pairing/command'
+    topic = getattr(settings, 'APPLIANCE_CUTOFF_COMMAND_TOPIC', 'aether/pairing/command')
 
     auth = {'username': username, 'password': password} if username and password else None
     tls = {'ca_certs': None, 'cert_reqs': ssl.CERT_NONE, 'tls_version': ssl.PROTOCOL_TLS} if port == 8883 else None
@@ -244,12 +330,12 @@ def publish_cutoff_command(reading: TelemetryReading) -> str:
     payload = {
         'mac': reading.device.mac_address if reading.device else reading.device_id,
         'action': 'CONTROL_RELAY',
-        'channel': reading.appliance.channel if reading.appliance else 1,
+        'channel': reading_channel(reading) or 1,
         'state': False  # Turn OFF
     }
     
     mqtt_publish.single(topic, payload=json.dumps(payload), hostname=broker, port=port, auth=auth, tls=tls)
-    print(f"📡 Dynamic Auto-Cutoff published to MQTT: {payload}")
+    print(f"Dynamic Auto-Cutoff published to MQTT: {payload}")
     return topic
 
 
@@ -281,6 +367,9 @@ def predict_log_and_act(reading: TelemetryReading) -> ApplianceStatePrediction:
         telemetry=reading,
         device_ref=reading.device_ref,
         device_id=reading.device_id,
+        appliance_id=reading.appliance_id,
+        appliance_channel=reading_channel(reading),
+        channel_key=reading_channel_key(reading),
         predicted_state=predicted_state,
         confidence_score=result['confidence_score'],
         action_taken=action_taken,

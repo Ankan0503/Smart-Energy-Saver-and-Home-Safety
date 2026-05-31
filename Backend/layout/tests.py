@@ -32,6 +32,7 @@ class LayoutApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(body, list)
         self.assertEqual(body[0]['name'], 'Kitchen')
+        self.assertEqual(body[0]['floor'], 0)
         self.assertEqual(body[0]['mapped_device_mac'], '7C:9E:BD:11:11:11')
         self.assertIn('doors', body[0])
 
@@ -50,6 +51,7 @@ class LayoutApiTests(TestCase):
                 'rooms': [
                     {
                         'name': 'Server Room',
+                        'floor': 1,
                         'grid_x': 2,
                         'grid_y': 1,
                         'grid_w': 5,
@@ -69,6 +71,7 @@ class LayoutApiTests(TestCase):
         device = Device.objects.get(mac_address='7C:9E:BD:22:22:22')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(body['rooms'][0]['name'], 'Server Room')
+        self.assertEqual(body['rooms'][0]['floor'], 1)
         self.assertEqual(len(body['rooms'][0]['doors']), 2)
         self.assertEqual(device.room.name, 'Server Room')
 

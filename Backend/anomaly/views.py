@@ -62,9 +62,12 @@ def _user_device_filter(request):
     if not user:
         return None, JsonResponse({'error': 'Unauthorized'}, status=401)
     device_id = request.GET.get('device_id')
+    channel = request.GET.get('channel')
     queryset = ApplianceStatePrediction.objects.filter(device_ref__owner=user)
     if device_id:
         queryset = queryset.filter(device_id=device_id)
+    if channel:
+        queryset = queryset.filter(appliance_channel=channel)
     return queryset, None
 
 
@@ -81,6 +84,9 @@ def prediction_history(request):
                 'id': row.id,
                 'device_id': row.device_id,
                 'device_name': row.device_ref.name if row.device_ref else row.device_id,
+                'appliance_id': row.appliance_id,
+                'appliance_channel': row.appliance_channel,
+                'channel_key': row.channel_key,
                 'predicted_state': row.predicted_state,
                 'confidence_score': row.confidence_score,
                 'action_taken': row.action_taken,
@@ -104,13 +110,13 @@ def realtime_appliance_status(request):
     device_ids = (
         ApplianceStatePrediction.objects
         .filter(device_ref__owner=user)
-        .values_list('device_id', flat=True)
+        .values_list('channel_key', flat=True)
         .distinct()
     )
-    for device_id in device_ids:
+    for channel_key in device_ids:
         prediction = (
             ApplianceStatePrediction.objects
-            .filter(device_ref__owner=user, device_id=device_id)
+            .filter(device_ref__owner=user, channel_key=channel_key)
             .select_related('telemetry', 'device_ref')
             .order_by('-timestamp')
             .first()
@@ -119,6 +125,9 @@ def realtime_appliance_status(request):
             latest_by_device.append({
                 'device_id': prediction.device_id,
                 'device_name': prediction.device_ref.name if prediction.device_ref else prediction.device_id,
+                'appliance_id': prediction.appliance_id,
+                'appliance_channel': prediction.appliance_channel,
+                'channel_key': prediction.channel_key,
                 'predicted_state': prediction.predicted_state,
                 'confidence_score': prediction.confidence_score,
                 'action_taken': prediction.action_taken,
@@ -209,6 +218,9 @@ def ai_insights(request):
             message = f'{message} Automatic power cutoff executed.'
         insights.append({
             'device_id': row.device_id,
+            'appliance_id': row.appliance_id,
+            'appliance_channel': row.appliance_channel,
+            'channel_key': row.channel_key,
             'predicted_state': row.predicted_state,
             'message': message,
             'confidence_score': row.confidence_score,

@@ -27,18 +27,17 @@ from telemetry.models import TelemetryReading
 def _label_row(row, device_stats):
     power = float(row['power'])
     current = float(row['current'])
-    pir = int(row['pir'])
-    stats = device_stats[row['device_id']]
+    stats = device_stats[row['channel_key']]
     avg_power = max(float(stats['avg_power']), 1e-6)
     max_power = max(float(stats['max_power']), 1e-6)
 
     if power > max(1800.0, max_power * 1.35) or current > 8:
         return STATE_ABNORMAL
-    if pir == 0 and 3 <= power <= max(20.0, avg_power * 0.25):
-        return STATE_PHANTOM_LOAD
-    if pir == 0 and power > max(20.0, avg_power * 0.25):
+    if power <= max(1.5, avg_power * 0.10):
         return STATE_IDLE
-    if power > max(15.0, avg_power * 0.15):
+    if 3 <= power <= max(8.0, avg_power * 0.25):
+        return STATE_PHANTOM_LOAD
+    if power > max(2.0, avg_power * 0.40):
         return STATE_ACTIVE
     return STATE_IDLE
 
@@ -101,13 +100,15 @@ class Command(BaseCommand):
         rows = []
         for reading in queryset.iterator():
             local_ts = timezone.localtime(reading.timestamp)
+            channel = int(reading.channel or 0)
+            channel_key = f'{reading.device_id}:ch{channel}' if channel else f'{reading.device_id}:global'
             rows.append({
-                'device_id': reading.device_id,
+                'channel_key': channel_key,
                 'current': float(reading.current or 0.0),
                 'power': float(reading.power or 0.0),
-                'pir': 1 if int(reading.pir or 0) else 0,
                 'hour_of_day': local_ts.hour,
                 'day_of_week': local_ts.weekday(),
+                'appliance_channel': channel,
             })
 
         frame = pd.DataFrame(rows)
@@ -115,20 +116,20 @@ class Command(BaseCommand):
             raise CommandError(f'Need at least {min_rows} telemetry rows, found {len(frame)}.')
 
         device_stats = (
-            frame.groupby('device_id')['power']
+            frame.groupby('channel_key')['power']
             .agg(avg_power='mean', max_power='max')
             .to_dict('index')
         )
-        frame['device_avg_power'] = frame['device_id'].map(lambda value: device_stats[value]['avg_power'])
-        frame['device_max_power'] = frame['device_id'].map(lambda value: device_stats[value]['max_power'])
+        frame['device_avg_power'] = frame['channel_key'].map(lambda value: device_stats[value]['avg_power'])
+        frame['device_max_power'] = frame['channel_key'].map(lambda value: device_stats[value]['max_power'])
         frame['power_to_avg_ratio'] = frame['power'] / frame['device_avg_power'].clip(lower=1e-6)
         frame['label'] = frame.apply(lambda row: _label_row(row, device_stats), axis=1)
 
-        numeric_features = [name for name in FEATURE_COLUMNS if name != 'device_id']
+        numeric_features = [name for name in FEATURE_COLUMNS if name != 'channel_key']
         preprocessor = ColumnTransformer(
             transformers=[
                 ('numeric', StandardScaler(), numeric_features),
-                ('device', OneHotEncoder(handle_unknown='ignore'), ['device_id']),
+                ('channel', OneHotEncoder(handle_unknown='ignore'), ['channel_key']),
             ]
         )
         classifier = RandomForestClassifier(

@@ -16,6 +16,7 @@ class TelemetryReading(models.Model):
     c3 = models.FloatField(default=0.0)
     c4 = models.FloatField(default=0.0)
     appliance_id = models.IntegerField(null=True, blank=True, db_column='appliance_id')
+    channel = models.PositiveSmallIntegerField(null=True, blank=True, db_index=True)
 
     @property
     def device(self):
@@ -59,6 +60,9 @@ class ApplianceStatePrediction(models.Model):
     telemetry = models.OneToOneField(TelemetryReading, on_delete=models.CASCADE, related_name='prediction')
     device_ref = models.ForeignKey(Device, on_delete=models.SET_NULL, null=True, blank=True, related_name='state_predictions')
     device_id = models.CharField(max_length=64, db_index=True)
+    appliance_id = models.IntegerField(null=True, blank=True, db_index=True)
+    appliance_channel = models.PositiveSmallIntegerField(null=True, blank=True, db_index=True)
+    channel_key = models.CharField(max_length=96, db_index=True, default='')
     predicted_state = models.CharField(max_length=32, choices=STATE_CHOICES, db_index=True)
     confidence_score = models.FloatField(default=0.0)
     action_taken = models.CharField(max_length=128, blank=True, default='')
@@ -69,5 +73,6 @@ class ApplianceStatePrediction(models.Model):
         ordering = ['-timestamp']
         indexes = [
             models.Index(fields=['device_id', '-timestamp']),
+            models.Index(fields=['channel_key', '-timestamp'], name='telemetry_a_channel_665f0a_idx'),
             models.Index(fields=['predicted_state', '-timestamp']),
         ]

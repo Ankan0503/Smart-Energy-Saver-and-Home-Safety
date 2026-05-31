@@ -152,3 +152,33 @@ export const sendHazardNotification = async (
   });
 };
 
+export const showImmediateHazardNotification = async (payload: {
+  title: string;
+  message: string;
+  tag: string;
+}) => {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const options = {
+    body: payload.message,
+    icon: '/icons/aether-icon-192.png',
+    badge: '/icons/aether-icon-192.png',
+    tag: payload.tag,
+    renotify: true,
+    requireInteraction: true,
+  } as NotificationOptions & { renotify: boolean };
+
+  try {
+    const registration = 'serviceWorker' in navigator
+      ? await navigator.serviceWorker.ready
+      : null;
+    if (registration) {
+      await registration.showNotification(payload.title, options);
+      return;
+    }
+  } catch (err) {
+    console.error('Failed to show immediate service-worker notification:', err);
+  }
+
+  new Notification(payload.title, options);
+};

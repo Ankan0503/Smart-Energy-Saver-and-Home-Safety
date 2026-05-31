@@ -22,6 +22,7 @@ type LayoutDevice = {
   device_type: 'GATEWAY' | 'SUBNODE';
   role: string;
   is_active?: boolean;
+  last_seen?: string | null;
 };
 
 type DoorWall = 'top' | 'right' | 'bottom' | 'left';
@@ -36,6 +37,7 @@ type RoomDoor = {
 type RoomLayout = {
   id?: string;
   name: string;
+  floor?: number;
   grid_x: number;
   grid_y: number;
   grid_w: number;
@@ -47,6 +49,7 @@ type RoomLayout = {
 
 interface DigitalTwinViewProps {
   token: string;
+  meshId: string;
   liveTelemetry: any;
   addToast: (message: string, icon: any) => void;
 }
@@ -56,11 +59,12 @@ const GRID_ROWS = 12;
 const CELL_SIZE = 34;
 const WALL_HEIGHT = 0.66;
 const WALL_THICKNESS = 0.08;
+const floorLabel = (floor: number) => `Floor ${floor + 1}`;
 
 const starterRooms: RoomLayout[] = [
-  { name: 'Kitchen', grid_x: 0, grid_y: 0, grid_w: 5, grid_h: 4, mapped_device_mac: null, doors: [{ id: 'kitchen-door', wall: 'bottom', offset: 0.5, width: 0.32 }] },
-  { name: 'Living Room', grid_x: 5, grid_y: 0, grid_w: 6, grid_h: 5, mapped_device_mac: null, doors: [{ id: 'living-door', wall: 'left', offset: 0.52, width: 0.26 }] },
-  { name: 'Utility', grid_x: 0, grid_y: 4, grid_w: 4, grid_h: 4, mapped_device_mac: null, doors: [{ id: 'utility-door', wall: 'top', offset: 0.45, width: 0.3 }] },
+  { name: 'Kitchen', floor: 0, grid_x: 0, grid_y: 0, grid_w: 5, grid_h: 4, mapped_device_mac: null, doors: [{ id: 'kitchen-door', wall: 'bottom', offset: 0.5, width: 0.32 }] },
+  { name: 'Living Room', floor: 0, grid_x: 5, grid_y: 0, grid_w: 6, grid_h: 5, mapped_device_mac: null, doors: [{ id: 'living-door', wall: 'left', offset: 0.52, width: 0.26 }] },
+  { name: 'Utility', floor: 0, grid_x: 0, grid_y: 4, grid_w: 4, grid_h: 4, mapped_device_mac: null, doors: [{ id: 'utility-door', wall: 'top', offset: 0.45, width: 0.3 }] },
 ];
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -109,10 +113,27 @@ const doorStyle = (room: RoomLayout, door: RoomDoor): React.CSSProperties => {
   return { right: -8, top: offset * roomH - doorPixels / 2, height: doorPixels };
 };
 
-export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinViewProps) => {
+const roomEspNames = (room: RoomLayout, devices: LayoutDevice[]) => {
+  const names = (room.devices || [])
+    .map(device => device.device_alias || device.mac_address)
+    .filter(Boolean);
+
+  if (names.length) return names.join(', ');
+  const mappedDevice = devices.find(device => device.mac_address === room.mapped_device_mac);
+  if (mappedDevice) return mappedDevice.device_alias || mappedDevice.mac_address;
+  return room.mapped_device_mac ? room.mapped_device_mac : 'No ESP mapped';
+};
+
+const isFaultStatus = (status: unknown) => {
+  const normalized = String(status || '').toUpperCase();
+  return normalized.includes('TRIP') || normalized.includes('FAULT') || normalized.includes('LEAK') || normalized.includes('FIRE');
+};
+
+export const DigitalTwinView = ({ token, meshId, liveTelemetry, addToast }: DigitalTwinViewProps) => {
   const [mode, setMode] = useState<'editor' | 'hud'>('editor');
   const [rooms, setRooms] = useState<RoomLayout[]>([]);
   const [unmappedDevices, setUnmappedDevices] = useState<LayoutDevice[]>([]);
+  const [selectedFloor, setSelectedFloor] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -135,6 +156,21 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
     return Array.from(byMac.values());
   }, [rooms, unmappedDevices]);
 
+  const floorOptions = useMemo(() => {
+    const floors = new Set(rooms.map(room => Number(room.floor ?? 0)));
+    floors.add(selectedFloor);
+    return Array.from(floors).sort((a, b) => a - b);
+  }, [rooms, selectedFloor]);
+
+  const visibleRoomEntries = useMemo(
+    () => rooms
+      .map((room, index) => ({ room, index }))
+      .filter(({ room }) => Number(room.floor ?? 0) === selectedFloor),
+    [rooms, selectedFloor]
+  );
+
+  const selectedRoom = rooms[selectedIndex];
+
   const authHeaders = (): HeadersInit => {
     const headers: HeadersInit = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -151,8 +187,10 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
       }
       const data = await res.json();
       const loadedRooms = Array.isArray(data.rooms) ? data.rooms : [];
-      setRooms((loadedRooms.length ? loadedRooms : starterRooms).map((room: RoomLayout) => ({ ...room, doors: normalizeDoors(room) })));
+      const nextRooms = (loadedRooms.length ? loadedRooms : starterRooms).map((room: RoomLayout) => ({ ...room, floor: Number(room.floor ?? 0), doors: normalizeDoors(room) }));
+      setRooms(nextRooms);
       setUnmappedDevices(Array.isArray(data.unmapped_devices) ? data.unmapped_devices : []);
+      setSelectedFloor(Number(nextRooms[0]?.floor ?? 0));
       setSelectedIndex(0);
     } catch (err) {
       console.error('Failed to load digital twin layout:', err);
@@ -173,6 +211,7 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
         rooms: rooms.map(room => ({
           id: room.id,
           name: room.name,
+          floor: Number(room.floor ?? 0),
           grid_x: room.grid_x,
           grid_y: room.grid_y,
           grid_w: room.grid_w,
@@ -188,7 +227,7 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
       });
       if (!res.ok) throw new Error('Layout save failed');
       const data = await res.json();
-      setRooms((data.rooms || rooms).map((room: RoomLayout) => ({ ...room, doors: normalizeDoors(room) })));
+      setRooms((data.rooms || rooms).map((room: RoomLayout) => ({ ...room, floor: Number(room.floor ?? 0), doors: normalizeDoors(room) })));
       setUnmappedDevices(data.unmapped_devices || []);
       addToast('Digital twin layout saved', Save);
     } catch (err) {
@@ -203,12 +242,19 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
     setRooms(prev => prev.map((room, i) => i === index ? { ...room, ...patch } : room));
   };
 
+  const addFloor = () => {
+    const nextFloor = floorOptions.length ? Math.max(...floorOptions) + 1 : 0;
+    setSelectedFloor(nextFloor);
+    setSelectedIndex(-1);
+  };
+
   const addRoom = () => {
     setRooms(prev => {
       const next = [
         ...prev,
         {
           name: `Room ${prev.length + 1}`,
+          floor: selectedFloor,
           grid_x: 1,
           grid_y: 1,
           grid_w: 4,
@@ -338,6 +384,16 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
 
   useEffect(() => clearDrag, []);
 
+  useEffect(() => {
+    if (!rooms.length) {
+      setSelectedIndex(0);
+      return;
+    }
+    if (!rooms[selectedIndex] || Number(rooms[selectedIndex].floor ?? 0) !== selectedFloor) {
+      setSelectedIndex(visibleRoomEntries[0]?.index ?? -1);
+    }
+  }, [rooms, selectedFloor, selectedIndex, visibleRoomEntries]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 18 }}
@@ -354,6 +410,27 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
           <p className="text-sm text-ink/50 mt-3 max-w-3xl">Design rooms, bind ESP-NOW devices, then view a live 2.5D twin driven by telemetry.</p>
         </div>
         <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 w-full xl:w-auto">
+          <div className="p-1 bg-bg-card/60 rounded-2xl border border-olive/10 flex gap-1 overflow-x-auto no-scrollbar w-full sm:w-auto">
+            {floorOptions.map(floor => (
+              <button
+                key={floor}
+                onClick={() => setSelectedFloor(floor)}
+                className={cn(
+                  'shrink-0 px-4 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all',
+                  selectedFloor === floor ? 'bg-white text-olive shadow-sm' : 'text-ink/40 hover:text-ink'
+                )}
+              >
+                {floorLabel(floor)}
+              </button>
+            ))}
+            <button
+              onClick={addFloor}
+              className="shrink-0 h-10 w-10 self-center rounded-xl bg-white text-olive border border-olive/10 flex items-center justify-center"
+              title="Add floor"
+            >
+              <Plus size={14} />
+            </button>
+          </div>
           <div className="p-1 bg-bg-card/60 rounded-2xl border border-olive/10 grid grid-cols-2 sm:flex gap-1 w-full sm:w-auto">
             {[
               { id: 'editor', Icon: Grid3X3, label: 'Editor' },
@@ -391,7 +468,7 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
           <div className="bg-white rounded-[1.75rem] sm:rounded-[2.5rem] border border-olive/10 shadow-sm p-3 sm:p-5 overflow-x-auto">
             <div className="mb-4 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
               <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 sm:flex-wrap sm:overflow-visible">
-                {rooms.map((room, index) => (
+                {visibleRoomEntries.map(({ room, index }) => (
                   <button
                     key={room.id || `${room.name}-${index}-tab`}
                     onClick={() => setSelectedIndex(index)}
@@ -407,7 +484,8 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
                 ))}
               </div>
               <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-ink/35 overflow-x-auto no-scrollbar">
-                <span className="rounded-xl bg-bg-card/40 px-3 py-2">{rooms.length} Rooms</span>
+                <span className="rounded-xl bg-bg-card/40 px-3 py-2">{floorLabel(selectedFloor)}</span>
+                <span className="rounded-xl bg-bg-card/40 px-3 py-2">{visibleRoomEntries.length} Rooms</span>
                 <span className="rounded-xl bg-bg-card/40 px-3 py-2">{allDevices.length} Devices</span>
               </div>
             </div>
@@ -421,7 +499,7 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
                 backgroundSize: `${CELL_SIZE}px ${CELL_SIZE}px`,
               }}
             >
-              {rooms.map((room, index) => {
+              {visibleRoomEntries.map(({ room, index }) => {
                 const isSelected = selectedIndex === index;
                 const mappedDevice = allDevices.find(device => device.mac_address === room.mapped_device_mac);
                 const doors = normalizeDoors(room);
@@ -485,6 +563,19 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
                   </div>
                 );
               })}
+              {!visibleRoomEntries.length && (
+                <div className="absolute inset-0 flex items-center justify-center text-center">
+                  <div>
+                    <div className="text-sm font-bold text-ink/45">{floorLabel(selectedFloor)} has no rooms yet.</div>
+                    <button
+                      onClick={addRoom}
+                      className="mt-4 rounded-2xl bg-olive text-white px-5 py-3 text-[9px] font-black uppercase tracking-widest"
+                    >
+                      Add Room
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -496,21 +587,38 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
               </button>
             </div>
 
-            {rooms[selectedIndex] && (
+            {selectedRoom && (
               <div className="space-y-4">
                 <label className="block">
                   <span className="text-[9px] font-black uppercase tracking-widest text-ink/35">Room Name</span>
                   <input
-                    value={rooms[selectedIndex].name}
+                    value={selectedRoom.name}
                     onChange={(event) => updateRoom(selectedIndex, { name: event.target.value })}
                     className="mt-2 w-full rounded-2xl border border-olive/10 bg-bg-card/20 px-4 py-3 text-sm font-bold text-ink outline-none focus:border-olive/40"
                   />
                 </label>
 
                 <label className="block">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-ink/35">Floor</span>
+                  <select
+                    value={Number(selectedRoom.floor ?? 0)}
+                    onChange={(event) => {
+                      const floor = Number(event.target.value);
+                      updateRoom(selectedIndex, { floor });
+                      setSelectedFloor(floor);
+                    }}
+                    className="mt-2 w-full rounded-2xl border border-olive/10 bg-bg-card/20 px-4 py-3 text-sm font-bold text-ink outline-none focus:border-olive/40"
+                  >
+                    {floorOptions.map(floor => (
+                      <option key={floor} value={floor}>{floorLabel(floor)}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
                   <span className="text-[9px] font-black uppercase tracking-widest text-ink/35">Mapped Device</span>
                   <select
-                    value={rooms[selectedIndex].mapped_device_mac || ''}
+                    value={selectedRoom.mapped_device_mac || ''}
                     onChange={(event) => updateRoom(selectedIndex, { mapped_device_mac: event.target.value || null })}
                     className="mt-2 w-full rounded-2xl border border-olive/10 bg-bg-card/20 px-4 py-3 text-sm font-bold text-ink outline-none focus:border-olive/40"
                   >
@@ -529,7 +637,7 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
                       <span className="text-[8px] font-black uppercase tracking-widest text-ink/30">{key.replace('grid_', '')}</span>
                       <input
                         type="number"
-                        value={rooms[selectedIndex][key]}
+                        value={selectedRoom[key]}
                         onChange={(event) => updateRoom(selectedIndex, { [key]: Number(event.target.value) } as Partial<RoomLayout>)}
                         className="mt-1 w-full rounded-xl border border-olive/10 bg-white px-2 py-2 text-xs font-bold text-ink"
                       />
@@ -547,14 +655,14 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
                       type="number"
                       min={0}
                       max={8}
-                      value={normalizeDoors(rooms[selectedIndex]).length}
+                      value={normalizeDoors(selectedRoom).length}
                       onChange={(event) => setDoorCount(selectedIndex, Number(event.target.value))}
                       className="w-16 rounded-xl border border-olive/10 bg-white px-3 py-2 text-sm font-black text-ink"
                     />
                   </div>
 
                   <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                    {normalizeDoors(rooms[selectedIndex]).map((door, doorIndex) => (
+                    {normalizeDoors(selectedRoom).map((door, doorIndex) => (
                       <div key={door.id} className="rounded-2xl bg-white border border-olive/10 p-3 space-y-3">
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-olive">
@@ -634,7 +742,9 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[9px] font-black uppercase tracking-widest text-olive/60">Layout Health</div>
-                  <div className="mt-1 text-sm font-bold text-ink">{rooms.filter(room => room.mapped_device_mac).length}/{rooms.length} rooms mapped</div>
+                  <div className="mt-1 text-sm font-bold text-ink">
+                    {visibleRoomEntries.filter(({ room }) => room.mapped_device_mac).length}/{visibleRoomEntries.length} rooms mapped on {floorLabel(selectedFloor)}
+                  </div>
                 </div>
                 <div className="h-10 w-10 rounded-xl bg-white text-olive flex items-center justify-center">
                   <Grid3X3 size={16} />
@@ -658,7 +768,7 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
           </aside>
         </div>
       ) : (
-        <TwinHud rooms={rooms} liveTelemetry={liveTelemetry} />
+        <TwinHud rooms={rooms} devices={allDevices} meshId={meshId} selectedFloor={selectedFloor} liveTelemetry={liveTelemetry} />
       )}
 
       {isLoading && (
@@ -672,10 +782,35 @@ export const DigitalTwinView = ({ token, liveTelemetry, addToast }: DigitalTwinV
   );
 };
 
-const TwinHud = ({ rooms, liveTelemetry }: { rooms: RoomLayout[]; liveTelemetry: any }) => {
+const TwinHud = ({
+  rooms,
+  devices,
+  meshId,
+  selectedFloor,
+  liveTelemetry,
+}: {
+  rooms: RoomLayout[];
+  devices: LayoutDevice[];
+  meshId: string;
+  selectedFloor: number;
+  liveTelemetry: any;
+}) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const roomsRef = useRef(rooms);
   const telemetryRef = useRef(liveTelemetry);
+  const gatewayOnline = devices.some(device => ['gateway', 'relay'].includes(device.role) && device.is_active);
+  const offlineDevices = devices.filter(device => !device.is_active);
+  const meshFault = isFaultStatus(liveTelemetry?.status);
+  const meshHealthy = devices.length > 0 && gatewayOnline && offlineDevices.length === 0 && !meshFault;
+  const meshStatusLabel = meshHealthy
+    ? 'Mesh Online'
+    : !devices.length
+      ? 'No Paired Mesh'
+      : meshFault
+        ? 'Mesh Alert'
+        : !gatewayOnline
+          ? 'Gateway Offline'
+          : `${offlineDevices.length} Node${offlineDevices.length === 1 ? '' : 's'} Offline`;
 
   useEffect(() => {
     roomsRef.current = rooms;
@@ -717,7 +852,8 @@ const TwinHud = ({ rooms, liveTelemetry }: { rooms: RoomLayout[]; liveTelemetry:
     const rebuild = () => {
       group.clear();
       flowDots.length = 0;
-      const layoutRooms = roomsRef.current.length ? roomsRef.current : starterRooms;
+      const sourceRooms = roomsRef.current.length ? roomsRef.current : starterRooms;
+      const layoutRooms = sourceRooms.filter(room => Number(room.floor ?? 0) === selectedFloor);
       const scale = 0.62;
       const offsetX = (GRID_COLS * scale) / 2;
       const offsetZ = (GRID_ROWS * scale) / 2;
@@ -726,7 +862,7 @@ const TwinHud = ({ rooms, liveTelemetry }: { rooms: RoomLayout[]; liveTelemetry:
 
       layoutRooms.forEach((room, index) => {
         const active = room.mapped_device_mac || (room.devices && room.devices.length);
-        const color = status.includes('TRIP') || status.includes('FAULT')
+        const color = isFaultStatus(status)
           ? 0xbc4749
           : active
             ? 0x8fa189
@@ -743,7 +879,7 @@ const TwinHud = ({ rooms, liveTelemetry }: { rooms: RoomLayout[]; liveTelemetry:
         floorMesh.position.set(x, 0.04, z);
         group.add(floorMesh);
 
-        const wallColor = status.includes('TRIP') || status.includes('FAULT')
+        const wallColor = isFaultStatus(status)
           ? 0xd9a1a2
           : active
             ? 0xf8f7f1
@@ -767,8 +903,8 @@ const TwinHud = ({ rooms, liveTelemetry }: { rooms: RoomLayout[]; liveTelemetry:
           group.add(marker);
         });
 
-        const label = makeLabel(room.name, active ? String(room.mapped_device_mac || 'mapped') : 'unmapped');
-        label.position.set(x, 1.02, z);
+        const label = makeLabel(room.name, active ? roomEspNames(room, devices) : 'No ESP mapped');
+        label.position.set(x, 1.08, z);
         group.add(label);
 
         const dot = new THREE.Mesh(
@@ -819,23 +955,36 @@ const TwinHud = ({ rooms, liveTelemetry }: { rooms: RoomLayout[]; liveTelemetry:
       mount.removeChild(renderer.domElement);
       renderer.dispose();
     };
-  }, []);
+  }, [selectedFloor, devices]);
 
   return (
     <div className="bg-white rounded-[2.5rem] border border-olive/10 shadow-sm overflow-hidden">
       <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 p-4 sm:p-5 border-b border-olive/5">
         <div>
           <h3 className="text-sm font-bold uppercase tracking-widest text-ink">2.5D Safety HUD</h3>
-          <p className="text-xs text-ink/40 mt-1">Green safe, yellow idle, red fault or isolated circuit.</p>
+          <p className="text-xs text-ink/40 mt-1">
+            Mesh: <span className="font-black text-ink">{meshId || 'Not configured'}</span>
+            <span className="mx-2 text-ink/20">/</span>
+            <span className="font-black text-ink">{floorLabel(selectedFloor)}</span>
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <div className={cn(
+            'flex items-center gap-2 text-[10px] font-black uppercase tracking-widest rounded-2xl px-3 py-2 border',
+            meshHealthy
+              ? 'text-olive bg-olive/5 border-olive/10'
+              : 'text-danger bg-danger/10 border-danger/20 animate-pulse'
+          )}>
+            <ShieldAlert size={14} />
+            {meshStatusLabel}
+          </div>
           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-olive bg-olive/5 border border-olive/10 rounded-2xl px-3 py-2">
             <Zap size={14} />
             {Number(liveTelemetry?.current || 0).toFixed(2)}A Live
           </div>
           <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-ink/45 bg-bg-card/35 border border-olive/5 rounded-2xl px-3 py-2">
             <Box size={14} />
-            {rooms.length || starterRooms.length} Rooms
+            {(rooms.length ? rooms : starterRooms).filter(room => Number(room.floor ?? 0) === selectedFloor).length} Rooms
           </div>
         </div>
       </div>
@@ -923,20 +1072,43 @@ const createDoorMarker = (width: number, depth: number, door: RoomDoor) => {
 
 const makeLabel = (name: string, subtitle: string) => {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 160;
+  canvas.width = 1024;
+  canvas.height = 320;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = 'rgba(255,255,255,0.88)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.shadowColor = 'rgba(31,36,27,0.20)';
+  ctx.shadowBlur = 22;
+  ctx.shadowOffsetY = 10;
+  ctx.fillStyle = 'rgba(255,255,255,0.96)';
+  ctx.roundRect(32, 28, canvas.width - 64, canvas.height - 56, 34);
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(96,108,56,0.26)';
+  ctx.stroke();
+
   ctx.fillStyle = '#3E423A';
-  ctx.font = '700 34px Arial';
-  ctx.fillText(name.slice(0, 22), 28, 62);
-  ctx.fillStyle = 'rgba(62,66,58,0.48)';
-  ctx.font = '700 20px Arial';
-  ctx.fillText(subtitle.slice(0, 30), 28, 104);
+  ctx.font = '800 60px Arial';
+  ctx.textBaseline = 'top';
+  ctx.fillText(name.slice(0, 22), 72, 76);
+
+  ctx.fillStyle = 'rgba(96,108,56,0.92)';
+  ctx.font = '800 34px Arial';
+  ctx.fillText(subtitle.slice(0, 44), 72, 164);
+
+  if (subtitle.length > 44) {
+    ctx.fillStyle = 'rgba(62,66,58,0.58)';
+    ctx.font = '700 28px Arial';
+    ctx.fillText(subtitle.slice(44, 88), 72, 212);
+  }
+
   const texture = new THREE.CanvasTexture(canvas);
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(1.9, 0.6, 1);
+  sprite.scale.set(2.35, 0.74, 1);
   return sprite;
 };

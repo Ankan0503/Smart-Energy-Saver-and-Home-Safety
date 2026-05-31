@@ -448,14 +448,18 @@ void loop() {
             float c4 = getACCurrent(CURRENT_PINS[3]);
             
             float totalCurrentCombined = c1 + c2 + c3 + c4;
+            int r1 = digitalRead(RELAY_PINS[0]) == LOW ? 1 : 0;
+            int r2 = digitalRead(RELAY_PINS[1]) == LOW ? 1 : 0;
+            int r3 = digitalRead(RELAY_PINS[2]) == LOW ? 1 : 0;
+            int r4 = digitalRead(RELAY_PINS[3]) == LOW ? 1 : 0;
 
             uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-            char telemetryPayload[350];
+            char telemetryPayload[430];
             
             // Package actual calibrated float string telemetry arrays for dashboard processing
             snprintf(telemetryPayload, sizeof(telemetryPayload),
-                     "{\"action\":\"TELEMETRY\",\"mac\":\"%s\",\"mesh_id\":\"%s\",\"gas\":0,\"current\":%.3f,\"pir\":1,\"flame\":1,\"status\":\"SAFE\",\"c1\":%.3f,\"c2\":%.3f,\"c3\":%.3f,\"c4\":%.3f}",
-                     getMacAddress().c_str(), meshId.c_str(), totalCurrentCombined, c1, c2, c3, c4);
+                     "{\"action\":\"TELEMETRY\",\"mac\":\"%s\",\"mesh_id\":\"%s\",\"gas\":0,\"current\":%.3f,\"pir\":1,\"flame\":1,\"status\":\"SAFE\",\"c1\":%.3f,\"c2\":%.3f,\"c3\":%.3f,\"c4\":%.3f,\"r1\":%d,\"r2\":%d,\"r3\":%d,\"r4\":%d}",
+                     getMacAddress().c_str(), meshId.c_str(), totalCurrentCombined, c1, c2, c3, c4, r1, r2, r3, r4);
             
             esp_now_send(broadcastAddress, (uint8_t *) telemetryPayload, strlen(telemetryPayload));
             Serial.println("Sent calibrated True-RMS current matrix arrays over ESP-NOW");
