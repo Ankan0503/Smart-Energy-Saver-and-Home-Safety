@@ -252,8 +252,6 @@ Written down so nobody rediscovers one of these during a demo.
 
 - **`docker-compose.yml` only builds the frontend**, on port 8080. The backend,
   broker and database are not in it — run the backend yourself.
-- **`Backend/requirements.txt` is UTF-16 encoded**, which some `pip` versions
-  refuse. Convert it to UTF-8 if `pip install -r` fails.
 - **No automated tests of substance.** `tests.py` exists in `layout`,
   `recommendations` and `telemetry`, and there is no CI.
 - The hazard scoring is threshold logic, not a trained model. It is explainable
